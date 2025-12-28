@@ -1,0 +1,8 @@
+summary: ''
+display_name: webhooks
+extra_perms:
+  u/admin: true
+  u/jdrqlabs: true
+owners:
+  - u/jdrqlabs
+  - u/admin

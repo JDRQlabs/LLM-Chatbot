@@ -1,0 +1,10 @@
+description: Business logic database
+value:
+  dbname: business_logic_app
+  host: business_logic_db
+  password: business_logic_password
+  port: 5432
+  root_certificate_pem: ''
+  sslmode: disable
+  user: business_logic_user
+resource_type: postgresql

@@ -1,0 +1,4 @@
+version: v2
+locks:
+  f/development/whatsapp-webhook: f201f7144a9df42f8d98c3b8501a7038e7c7437f6d4e53bfb520af551469cae8
+  f/development/whatsapp-webhook-preprocessor: 8c6c845cb934ec09d72b6ffb60123bb5a0e8670ff88d989dfa83101aa6e66723

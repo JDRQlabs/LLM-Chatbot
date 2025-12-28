@@ -1,0 +1,15 @@
+summary: ''
+description: Demo script for processing messages from Whatsapp business account webhook
+lock: '!inline f/development/whatsapp-webhook.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    payload:
+      type: object
+      description: ''
+      default: null
+      properties: {}
+  required:
+    - payload

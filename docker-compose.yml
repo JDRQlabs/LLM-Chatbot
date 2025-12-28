@@ -20,8 +20,8 @@ services:
     expose:
       - 5432
     environment:
-      POSTGRES_PASSWORD: changeme
-      POSTGRES_DB: windmill
+      POSTGRES_PASSWORD: ${WINDMILL_DB_PASSWORD}
+      POSTGRES_DB: ${WINDMILL_DB_NAME}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -39,7 +39,7 @@ services:
       - 8000
       - 2525
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${WINDMILL_DATABASE_URL}
       - MODE=server
     depends_on:
       db:
@@ -65,7 +65,7 @@ services:
     # See: https://www.windmill.dev/docs/advanced/security_isolation
     # privileged: true
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${WINDMILL_DATABASE_URL}
       - MODE=worker
       - WORKER_GROUP=default
       # Uncomment to enable PID namespace isolation (requires privileged: true above)
@@ -100,7 +100,7 @@ services:
     # See: https://www.windmill.dev/docs/advanced/security_isolation
     # privileged: true
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${WINDMILL_DATABASE_URL}
       - MODE=worker
       - WORKER_GROUP=native
       - NUM_WORKERS=8
@@ -156,7 +156,7 @@ services:
       - 8002
     environment:
       - PORT=8002
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${WINDMILL_DATABASE_URL}
       - MODE=indexer
     depends_on:
       db:
@@ -204,8 +204,36 @@ services:
       # - BASE_URL=mydomain.com # Uncomment and comment line above to enable HTTPS handling by Caddy
     logging: *default-logging
 
+  webhook-ingress:
+    build: ./webhook-server
+    container_name: webhook-ingress
+    restart: unless-stopped
+    ports:
+      - "3000:3000" # Expose port 3000 to your host machine
+    environment:
+      - PORT=3000
+      - WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN} # Defined in your .env
+      - WINDMILL_TOKEN=${WINDMILL_TOKEN}             # Defined in your .env
+      - WINDMILL_MESSAGE_PROCESSING_ENDPOINT=${WINDMILL_MESSAGE_PROCESSING_ENDPOINT} # Defined in your .env
+    depends_on:
+      - windmill_server # Ensures Windmill starts before the webhook listener
+  
+  business_logic_db:
+    image: postgres:16
+    container_name: business_logic_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${BUSINESS_LOGIC_DB_USER}
+      POSTGRES_PASSWORD: ${BUSINESS_LOGIC_DB_PASSWORD}
+      POSTGRES_DB: business_logic_app
+    volumes:
+      - business_logic_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432" # Expose on port 5433 to avoid conflict with Windmill's DB on 5432
+
 volumes:
   db_data: null
+  business_logic_db_data: null
   worker_dependency_cache: null
   worker_logs: null
   worker_memory: null

@@ -1,0 +1,8 @@
+summary: to be used for development by jdrqlabs
+display_name: development
+extra_perms:
+  u/admin: true
+  u/jdrqlabs: true
+owners:
+  - u/jdrqlabs
+  - u/admin

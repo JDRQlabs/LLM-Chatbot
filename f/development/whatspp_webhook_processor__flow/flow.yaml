@@ -1,0 +1,76 @@
+summary: Whatspp webhook processor
+description: ''
+value:
+  modules:
+    - id: e
+      value:
+        type: script
+        input_transforms:
+          payload:
+            type: static
+            value: null
+        is_trigger: false
+        path: f/development/whatsapp-webhook
+    - id: d
+      summary: Send POST Request (http)
+      value:
+        type: script
+        input_transforms:
+          body:
+            type: static
+            value: {}
+          headers:
+            type: static
+            value: {}
+          url:
+            type: static
+            value: ''
+        is_trigger: false
+        path: hub/11643/http/send_post_request
+  failure_module:
+    id: failure
+    value:
+      type: rawscript
+      content: |
+        import os
+
+
+        def main(message: str, name: str, step_id: str):
+            flow_id = os.environ.get("WM_ROOT_FLOW_JOB_ID")
+            print("message", message)
+            print("name", name)
+            print("step_id", step_id)
+            return {
+                "message": message,
+                "flow_id": flow_id,
+                "step_id": step_id,
+                "recover": False,
+            }
+      input_transforms:
+        name:
+          type: javascript
+          expr: error.name
+        message:
+          type: javascript
+          expr: error.message
+        step_id:
+          type: javascript
+          expr: error.step_id
+      lock: |
+        # py: 3.12
+      language: python3
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  order:
+    - payload
+    - challenge
+  properties:
+    challenge:
+      type: integer
+      description: ''
+    payload:
+      type: object
+      description: ''
+      default: null
+  required: []
