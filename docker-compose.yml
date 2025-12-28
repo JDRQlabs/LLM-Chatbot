@@ -225,7 +225,7 @@ services:
     environment:
       POSTGRES_USER: ${BUSINESS_LOGIC_DB_USER}
       POSTGRES_PASSWORD: ${BUSINESS_LOGIC_DB_PASSWORD}
-      POSTGRES_DB: business_logic_app
+      POSTGRES_DB: ${BUSINESS_LOGIC_DB_NAME}
     volumes:
       - business_logic_db_data:/var/lib/postgresql/data
     ports:

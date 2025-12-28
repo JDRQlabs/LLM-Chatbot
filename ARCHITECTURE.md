@@ -46,7 +46,7 @@ flowchart LR
 
 - **Ingestion:** Node.js receives POST /webhook, verifies X-Hub-Signature, pushes payload to Windmill, returns 200 OK.
 - **Context Loading (Step 1):**
-  - Windmill extracts `phone_number_id` (Tenant ID) and `user_phone`.
+  - Windmill extracts `phone_number_id` (Chatbot ID) and `user_phone`.
   - DB Query: Fetch Tenant settings + Chat History + User Profile.
 - **AI Reasoning (Step 2 - Python):**
   - Inputs: History, System Prompt, RAG Tools.
