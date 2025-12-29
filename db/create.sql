@@ -62,7 +62,7 @@ CREATE TABLE chatbots (
     whatsapp_access_token TEXT,
     
     -- AI Config
-    model_name VARCHAR(50) DEFAULT 'gpt-4o',
+    model_name VARCHAR(50) DEFAULT 'gemini-3-flash-preview',
     system_prompt TEXT DEFAULT 'You are a helpful assistant.',
     persona TEXT DEFAULT '', -- Tone/Style instructions
     

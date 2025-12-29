@@ -6,6 +6,16 @@ import crypto from 'crypto';
 const app = express();
 app.use(express.json());
 
+app.use((req, res, next) => {
+  // Log EVERYTHING
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (req.method === 'POST') {
+    console.log('Payload:', JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
+
 // 1. Meta Verification (GET) - Standard Meta Requirement
 app.get('/', (req, res) => {
   if (
@@ -56,7 +66,8 @@ async function triggerWindmillFlow(payload) {
 
     // Use the environment variable for the URL to keep it flexible
     const WINDMILL_URL = process.env.WINDMILL_MESSAGE_PROCESSING_ENDPOINT || 'http://windmill_server:8000';
-    console.log('Triggering Windmill flow');
+    console.log('Triggering Windmill flow with payload:', payload);
+    console.log('WINDMILL_URL:', WINDMILL_URL);
     await axios.post(
       `${WINDMILL_URL}`,
       {
@@ -77,6 +88,7 @@ async function triggerWindmillFlow(payload) {
     console.log('Windmill flow triggered');
   } catch (error) {
     console.error("Failed to trigger Windmill:", error.message);
+    console.error("Error details:", error.response?.data);
   }
 }
 

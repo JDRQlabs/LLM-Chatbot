@@ -1,4 +1,8 @@
 version: v2
 locks:
+  f/development/1_whatsapp_context_loading: a0ee6030f1586ab00cd702f6dec86121bae6f7f2b6a0537c595a329fb7dfe314
+  f/development/2_whatsapp_llm_processing: 36887845dc9f0f840dc096983b27445305a56e8b4cd07eae112a72fe4acf9e34
+  f/development/3_1_send_reply_to_whatsapp: 14d0fe24ca90c2859098d5ee1499ffc3334985d4fa3c1a2377f112dd6f90835e
+  f/development/3_2_save_chat_history: 8413cc857d696615e5d4a526343773ca421ba78f3a47fe99080c9c42496552a9
   f/development/whatsapp-webhook: f201f7144a9df42f8d98c3b8501a7038e7c7437f6d4e53bfb520af551469cae8
   f/development/whatsapp-webhook-preprocessor: 8c6c845cb934ec09d72b6ffb60123bb5a0e8670ff88d989dfa83101aa6e66723

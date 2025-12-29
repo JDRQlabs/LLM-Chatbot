@@ -1,0 +1,27 @@
+summary: 3.1 send reply to whatsapp
+description: ''
+lock: '!inline f/development/3_1_send_reply_to_whatsapp.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    context_payload:
+      type: object
+      description: ''
+      default: null
+      properties: {}
+    llm_result:
+      type: object
+      description: ''
+      default: null
+      properties: {}
+    phone_number_id:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+  required:
+    - phone_number_id
+    - context_payload
+    - llm_result

@@ -1,0 +1,38 @@
+summary: 2 Whatsapp LLM processing
+description: >-
+  step 2: Main processing stage where LLM uses tools/RAG if appropriate and
+  outputs the final response to be sent back to the user
+lock: '!inline f/development/2_whatsapp_llm_processing.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    context_payload:
+      type: object
+      description: ''
+      default: null
+      properties: {}
+    default_provider:
+      type: string
+      description: ''
+      default: google
+      originalType: string
+    google_api_key:
+      type: string
+      description: ''
+      default: <function call>
+      originalType: string
+    openai_api_key:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    user_message:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+  required:
+    - context_payload
+    - user_message
