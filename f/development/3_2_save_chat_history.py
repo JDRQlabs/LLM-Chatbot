@@ -1,5 +1,6 @@
 import wmill
 import psycopg2
+import json
 from psycopg2.extras import RealDictCursor
 
 

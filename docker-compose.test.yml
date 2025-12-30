@@ -1,0 +1,31 @@
+version: "3.7"
+
+services:
+  test_db:
+    image: postgres:16
+    container_name: test_business_logic_db
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: test_business_logic
+    ports:
+      - "5434:5432"  # Different port to avoid conflict with dev DB
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+      # Mount SQL scripts for easy initialization
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d test_business_logic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test_network
+
+volumes:
+  test_db_data:
+    driver: local
+
+networks:
+  test_network:
+    driver: bridge

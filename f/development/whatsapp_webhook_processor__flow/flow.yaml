@@ -1,4 +1,4 @@
-summary: Whatspp webhook processor
+summary: WhatsApp webhook processor
 description: ''
 value:
   modules:
@@ -85,6 +85,26 @@ value:
                       expr: flow_input.message_body
                   is_trigger: false
                   path: f/development/3_2_save_chat_history
+            expr: 'false'
+            parallel: true
+            skip_failure: false
+          - summary: Log usage for billing and analytics
+            modules:
+              - id: step3c
+                value:
+                  type: script
+                  input_transforms:
+                    context_payload:
+                      type: javascript
+                      expr: results.step1
+                    llm_result:
+                      type: javascript
+                      expr: results.step2
+                    db_resource:
+                      type: static
+                      value: f/development/business_layer_db_postgreSQL
+                  is_trigger: false
+                  path: f/development/3_3_log_usage
             expr: 'false'
             parallel: true
             skip_failure: false
