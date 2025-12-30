@@ -118,7 +118,6 @@ INSERT INTO chatbots (
     'You speak in a warm, professional tone. You use emojis occasionally to be friendly. You are knowledgeable but not overly technical.',
     0.7,
     FALSE, -- RAG disabled for now
-    'dev_namespace_01',
     TRUE
 );
 
