@@ -11,8 +11,9 @@
 ====================================================================
 */
 
--- Enable UUID extension if not already enabled
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "vector";  -- Required for RAG/embeddings
 
 -- 1. ORGANIZATIONS (The Tenant)
 CREATE TABLE organizations (

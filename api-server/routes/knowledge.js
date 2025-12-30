@@ -241,12 +241,12 @@ router.get('/:id/knowledge/sources', async (req, res, next) => {
       SELECT
         id,
         source_type,
-        source_url,
-        source_file_name,
-        status,
+        name,
+        file_path,
+        sync_status as status,
         error_message,
         file_size_bytes,
-        chunk_count,
+        chunks_count,
         created_at,
         updated_at
       FROM knowledge_sources

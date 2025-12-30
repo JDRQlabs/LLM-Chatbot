@@ -26,3 +26,5 @@ gitBranches:
     overrides: {}
   bugfix/webhook-payload-extraction:
     overrides: {}
+  feature/rag-knowledge-base:
+    overrides: {}

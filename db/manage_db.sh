@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Get the directory where this script is located (resolve symlinks)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -102,21 +105,31 @@ check_file() {
 # Helper function to run SQL inside the Docker container
 run_sql() {
   local file=$1
+  local full_path
   local temp_output
   local exit_code=0
-  
-  check_file "$file"
-  
-  info "Running $file..."
-  
+
+  # If file is absolute path, use as-is; otherwise prepend SCRIPT_DIR
+  if [[ "$file" = /* ]]; then
+    full_path="$file"
+  else
+    full_path="$SCRIPT_DIR/$file"
+  fi
+
+  check_file "$full_path"
+
+  # Get just the filename for display
+  local display_name=$(basename "$file")
+  info "Running $display_name..."
+
   # Capture output and exit code
   # For seed.sql, use envsubst to replace environment variables
   # For other files, just cat the file
-  if [ "$file" = "seed.sql" ]; then
-    temp_output=$(envsubst < "$file" | docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME" 2>&1)
+  if [[ "$display_name" = "seed.sql" ]]; then
+    temp_output=$(envsubst < "$full_path" | docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME" 2>&1)
     exit_code=$?
   else
-    temp_output=$(cat "$file" | docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME" 2>&1)
+    temp_output=$(cat "$full_path" | docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME" 2>&1)
     exit_code=$?
   fi
   
@@ -143,7 +156,7 @@ run_sql() {
 
 # Apply database migrations
 run_migrations() {
-  local migrations_dir="migrations"
+  local migrations_dir="$SCRIPT_DIR/migrations"
 
   info "Applying database migrations..."
 
