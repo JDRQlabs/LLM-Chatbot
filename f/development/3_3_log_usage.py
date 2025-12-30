@@ -12,10 +12,21 @@ def main(
 ) -> Dict[str, Any]:
     """
     Step 3_3: Usage Logging
-    
+
     Tracks token usage and message counts for billing/analytics.
     Updates the usage_summary table for quick limit checks.
     """
+
+    # Check if previous steps succeeded
+    if not context_payload.get("proceed", False):
+        print(f"Step 1 failed: {context_payload.get('reason', 'Unknown error')}")
+        print("Skipping usage logging")
+        return {"success": False, "error": "Cannot log usage - Step 1 failed"}
+
+    if "error" in llm_result:
+        print(f"Step 2 failed: {llm_result.get('error', 'Unknown error')}")
+        print("Skipping usage logging")
+        return {"success": False, "error": "Cannot log usage - Step 2 failed"}
 
     # Extract data from previous steps
     org_id = context_payload["chatbot"]["organization_id"]

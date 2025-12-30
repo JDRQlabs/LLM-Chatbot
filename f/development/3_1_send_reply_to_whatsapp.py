@@ -6,6 +6,15 @@ def main(
     context_payload: dict,  # From Step 1
     llm_result: dict,  # From Step 2
 ):
+    # Check if previous steps succeeded
+    if not context_payload.get("proceed", False):
+        print(f"Step 1 failed: {context_payload.get('reason', 'Unknown error')}")
+        return {"success": False, "error": "Cannot send reply - previous steps failed"}
+
+    if "error" in llm_result:
+        print(f"Step 2 failed: {llm_result.get('error', 'Unknown error')}")
+        return {"success": False, "error": "Cannot send reply - LLM processing failed"}
+
     token = context_payload["chatbot"]["wa_token"]
     to_phone = str(context_payload["user"]["phone"]).replace("+", "").strip()
     text_body = llm_result.get("reply_text")
