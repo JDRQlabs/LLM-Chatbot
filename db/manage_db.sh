@@ -3,6 +3,26 @@
 # Get the directory where this script is located (resolve symlinks)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Parse command-line arguments for target database
+TARGET="dev"  # Default to dev database
+COMMAND=""
+
+for arg in "$@"; do
+  case "$arg" in
+    --test)
+      TARGET="test"
+      ;;
+    --dev)
+      TARGET="dev"
+      ;;
+    *)
+      if [ -z "$COMMAND" ]; then
+        COMMAND="$arg"
+      fi
+      ;;
+  esac
+done
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -63,24 +83,35 @@ load_env() {
 
 load_env
 
-# Configuration (Matches your Docker Compose service & env var names)
-CONTAINER_NAME="business_logic_db" #must match the container name in the docker-compose.yml file
-DB_USER="$BUSINESS_LOGIC_DB_USER"
-DB_NAME="$BUSINESS_LOGIC_DB_NAME"
+# Configuration based on target database
+if [ "$TARGET" = "test" ]; then
+  # Test database configuration (from docker-compose.test.yml)
+  info "🧪 Targeting TEST database"
+  CONTAINER_NAME="test_business_logic_db"
+  DB_USER="test_user"
+  DB_NAME="test_business_logic"
+  # Test DB doesn't require .env validation since credentials are hardcoded in docker-compose.test.yml
+else
+  # Development database configuration (from .env and docker-compose.yml)
+  info "🔧 Targeting DEV database"
+  CONTAINER_NAME="business_logic_db"
+  DB_USER="$BUSINESS_LOGIC_DB_USER"
+  DB_NAME="$BUSINESS_LOGIC_DB_NAME"
 
-# Validate configuration
-if [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
-  error "Database configuration missing in .env file:"
-  [ -z "$DB_USER" ] && echo "  - BUSINESS_LOGIC_DB_USER"
-  [ -z "$DB_NAME" ] && echo "  - BUSINESS_LOGIC_DB_NAME"
-  echo ""
-  info "Debug: Checking loaded environment variables..."
-  echo "  BUSINESS_LOGIC_DB_USER=${BUSINESS_LOGIC_DB_USER:-<not set>}"
-  echo "  BUSINESS_LOGIC_DB_NAME=${BUSINESS_LOGIC_DB_NAME:-<not set>}"
-  echo ""
-  echo "  All variables containing 'DB' or 'BUSINESS':"
-  env | grep -iE "(DB|BUSINESS)" | sed 's/^/    /' || echo "    (none found)"
-  exit 1
+  # Validate configuration for dev database
+  if [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
+    error "Database configuration missing in .env file:"
+    [ -z "$DB_USER" ] && echo "  - BUSINESS_LOGIC_DB_USER"
+    [ -z "$DB_NAME" ] && echo "  - BUSINESS_LOGIC_DB_NAME"
+    echo ""
+    info "Debug: Checking loaded environment variables..."
+    echo "  BUSINESS_LOGIC_DB_USER=${BUSINESS_LOGIC_DB_USER:-<not set>}"
+    echo "  BUSINESS_LOGIC_DB_NAME=${BUSINESS_LOGIC_DB_NAME:-<not set>}"
+    echo ""
+    echo "  All variables containing 'DB' or 'BUSINESS':"
+    env | grep -iE "(DB|BUSINESS)" | sed 's/^/    /' || echo "    (none found)"
+    exit 1
+  fi
 fi
 
 # Check if container exists and is running
@@ -286,7 +317,7 @@ verify_db() {
 }
 
 # 2. Command Router
-case "$1" in
+case "$COMMAND" in
   "drop")
     check_container
     info "WARNING: This will delete all data in database '$DB_NAME'."
@@ -369,16 +400,25 @@ case "$1" in
     ;;
   
   *)
-    error "Invalid command: $1"
+    error "Invalid command: $COMMAND"
     echo ""
-    echo "Usage: ./manage_db.sh [create | seed | drop | reset | verify]"
+    echo "Usage: ./manage_db.sh [OPTIONS] <COMMAND>"
+    echo ""
+    echo "Options:"
+    echo "  --test  - Target the test database (test_business_logic_db)"
+    echo "  --dev   - Target the dev database (business_logic_db) [default]"
     echo ""
     echo "Commands:"
     echo "  create  - Create database schema"
-    echo "  seed    - Insert seed data (requires WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN in .env)"
+    echo "  seed    - Insert seed data (requires WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN in .env for dev DB)"
     echo "  drop    - Drop all tables (with confirmation)"
     echo "  reset   - Drop, create, and seed database (full reset)"
     echo "  verify  - Show all tables, their structure, and sample data"
+    echo ""
+    echo "Examples:"
+    echo "  ./manage_db.sh reset             # Reset dev database"
+    echo "  ./manage_db.sh --test reset      # Reset test database"
+    echo "  ./manage_db.sh --test create     # Create test database schema"
     exit 1
     ;;
 esac
