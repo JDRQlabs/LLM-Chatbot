@@ -105,38 +105,54 @@ value:
             expr: results.step3
         is_trigger: false
         path: f/development/3_3_log_usage
+    - id: step6
+      summary: Alert admin on LLM errors (rate limits, quota exceeded, etc.)
+      skip_if:
+        expr: '!results.step2.usage_info || !results.step2.usage_info.error'
+      value:
+        type: script
+        input_transforms:
+          error_message:
+            type: javascript
+            expr: results.step2.usage_info.error
+          step_id:
+            type: static
+            value: step2
+          error_name:
+            type: javascript
+            expr: "results.step2.usage_info.is_limit_error ? 'RATE_LIMIT_ERROR' : 'LLM_ERROR'"
+          chatbot_id:
+            type: javascript
+            expr: results.step1.chatbot.id
+          user_phone:
+            type: javascript
+            expr: flow_input.user_phone
+          db_resource:
+            type: static
+            value: f/development/business_layer_db_postgreSQL
+        is_trigger: false
+        path: f/development/utils/alert_on_failure
   failure_module:
     id: failure
     value:
-      type: rawscript
-      content: |
-        import os
-
-
-        def main(message: str, name: str, step_id: str):
-            flow_id = os.environ.get("WM_ROOT_FLOW_JOB_ID")
-            print("message", message)
-            print("name", name)
-            print("step_id", step_id)
-            return {
-                "message": message,
-                "flow_id": flow_id,
-                "step_id": step_id,
-                "recover": False,
-            }
+      type: script
+      path: f/development/utils/alert_on_failure
       input_transforms:
-        name:
-          type: javascript
-          expr: error.name
-        message:
+        error_message:
           type: javascript
           expr: error.message
         step_id:
           type: javascript
           expr: error.step_id
-      lock: |
-        # py: 3.12
-      language: python3
+        error_name:
+          type: javascript
+          expr: error.name
+        chatbot_id:
+          type: javascript
+          expr: flow_input.phone_number_id || 'unknown'
+        user_phone:
+          type: javascript
+          expr: flow_input.user_phone || 'unknown'
 schema:
   $schema: 'https://json-schema.org/draft/2020-12/schema'
   type: object

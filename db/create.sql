@@ -30,7 +30,12 @@ CREATE TABLE organizations (
     token_limit_monthly BIGINT DEFAULT 100000, -- Tokens per month
     billing_period_start DATE DEFAULT CURRENT_DATE, -- When current period started
     billing_period_end DATE DEFAULT (CURRENT_DATE + INTERVAL '1 month'), -- When it ends
-    
+
+    -- Notification Settings (for contact_owner MCP)
+    notification_method VARCHAR(20) DEFAULT 'disabled', -- 'disabled', 'slack', 'email', 'whatsapp'
+    slack_webhook_url TEXT, -- Slack webhook URL for notifications
+    notification_email VARCHAR(255), -- Email address for notifications
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -89,13 +94,17 @@ CREATE TABLE chatbots (
     persona TEXT DEFAULT '', -- Tone/Style instructions
     temperature DECIMAL(3,2) DEFAULT 0.7,
     
-    -- RAG Config - TODO: Implement RAG
+    -- RAG Config
     rag_enabled BOOLEAN DEFAULT FALSE,
-    
+
+    -- Fallback Messages (Customizable per chatbot)
+    fallback_message_error TEXT DEFAULT 'Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo más tarde.',
+    fallback_message_limit TEXT DEFAULT 'Lo siento, he alcanzado mi límite de uso. El administrador ha sido notificado.',
+
     -- Toggles & UI Settings
     is_active BOOLEAN DEFAULT TRUE,
     settings JSONB DEFAULT '{}',
-    
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

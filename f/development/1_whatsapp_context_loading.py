@@ -107,17 +107,19 @@ def main(
         # STEP 1B: FETCH CHATBOT + ORGANIZATION
         # ============================================================
         bot_query = """
-            SELECT 
-                c.id, 
+            SELECT
+                c.id,
                 c.organization_id,
                 c.name,
-                c.system_prompt, 
+                c.system_prompt,
                 c.persona,
                 c.model_name,
                 c.temperature,
                 c.rag_enabled,
                 c.whatsapp_access_token,
                 c.is_active,
+                c.fallback_message_error,
+                c.fallback_message_limit,
                 -- Organization info
                 o.name as org_name,
                 o.plan_tier,

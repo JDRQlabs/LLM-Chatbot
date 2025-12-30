@@ -274,6 +274,29 @@ services:
       retries: 3
     logging: *default-logging
 
+  mcp_contact_owner:
+    build: ./mcp-servers/contact-owner
+    container_name: mcp_contact_owner
+    restart: unless-stopped
+    expose:
+      - 3003
+    environment:
+      - PORT=3003
+      - DB_HOST=business_logic_db
+      - DB_PORT=5432
+      - DB_USER=${BUSINESS_LOGIC_DB_USER}
+      - DB_PASSWORD=${BUSINESS_LOGIC_DB_PASSWORD}
+      - DB_NAME=${BUSINESS_LOGIC_DB_NAME}
+    depends_on:
+      business_logic_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging: *default-logging
+
 volumes:
   db_data: null
   business_logic_db_data: null

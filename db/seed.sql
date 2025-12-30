@@ -7,26 +7,32 @@
 ====================================================================
 */
 
--- 1. Create Organization with Usage Limits
+-- 1. Create Organization with Usage Limits and Notification Settings
 INSERT INTO organizations (
-    id, 
-    name, 
-    slug, 
+    id,
+    name,
+    slug,
     plan_tier,
     message_limit_monthly,
     token_limit_monthly,
     billing_period_start,
     billing_period_end,
+    notification_method,
+    slack_webhook_url,
+    notification_email,
     is_active
 ) VALUES (
     '11111111-1111-1111-1111-111111111111',
-    'Dev Corp',
-    'dev-corp',
+    'JD Labs Corporation',
+    'jd-labs-corp',
     'pro', -- Pro plan
     1000, -- 1000 messages per month
     1000000, -- 1M tokens per month
     CURRENT_DATE,
     CURRENT_DATE + INTERVAL '1 month',
+    'slack', -- Enable Slack notifications
+    '${SLACK_WEBHOOK_URL}', -- Slack webhook URL from .env
+    '${OWNER_EMAIL}', -- Fallback to owner email
     TRUE
 );
 
@@ -59,6 +65,7 @@ INSERT INTO org_integrations (id, organization_id, provider, name, config, is_ac
         "type": "mcp_server",
         "server_url": "http://mcp_pricing_calculator:3001",
         "description": "Calcula precios del chatbot de WhatsApp según volumen de mensajes y tier",
+        "llm_instructions": "Usa esta herramienta cuando el cliente pregunte sobre precios o costos. Necesitas el volumen de mensajes estimado. Si no lo sabes, pregúntale al cliente primero.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -87,6 +94,7 @@ INSERT INTO org_integrations (id, organization_id, provider, name, config, is_ac
         "type": "mcp_server",
         "server_url": "http://mcp_lead_capture:3002",
         "description": "Guarda información de un cliente potencial interesado en el servicio",
+        "llm_instructions": "Usa esta herramienta cuando el cliente muestre interés genuino en contratar el servicio. Asegúrate de tener al menos su nombre y teléfono. Pregunta por la información faltante antes de llamar esta herramienta.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -112,6 +120,40 @@ INSERT INTO org_integrations (id, organization_id, provider, name, config, is_ac
                 }
             },
             "required": ["name", "phone"]
+        }
+    }',
+    TRUE
+),
+-- Contact Owner Tool (Purpose-Agnostic Notifications)
+(
+    '33333333-3333-3333-3333-333333333336',
+    '11111111-1111-1111-1111-111111111111',
+    'mcp',
+    'contact_owner',
+    '{
+        "type": "mcp_server",
+        "server_url": "http://mcp_contact_owner:3003",
+        "description": "Envía una notificación importante al dueño del chatbot con información relevante del contexto",
+        "llm_instructions": "Usa esta herramienta cuando necesites notificar al dueño sobre algo importante: leads de alto valor, problemas urgentes, quejas críticas, oportunidades de negocio, o cualquier situación que requiera atención humana. Incluye un mensaje claro explicando la situación, y en contact_info añade CUALQUIER información relevante del cliente o situación (nombre, contacto, detalles específicos del caso, etc). Este campo es completamente flexible - incluye lo que sea importante para el contexto.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Mensaje claro para el dueño explicando la situación y por qué requiere atención"
+                },
+                "contact_info": {
+                    "type": "object",
+                    "description": "Objeto genérico con CUALQUIER información relevante del cliente/situación. Puede incluir: nombre, teléfono, email, empresa, detalles del problema, presupuesto, timeline, o cualquier otro dato importante para el contexto. Completamente flexible.",
+                    "additionalProperties": true
+                },
+                "urgency": {
+                    "type": "string",
+                    "description": "Nivel de urgencia: low (informativo), medium (importante), high (urgente/crítico)",
+                    "enum": ["low", "medium", "high"]
+                }
+            },
+            "required": ["message"]
         }
     }',
     TRUE
@@ -156,20 +198,16 @@ INSERT INTO chatbots (
     'Eres un representante de ventas y servicio al cliente para JD Labs, empresa en Guadalajara, México. Vendes "Chatbot de WhatsApp" - una solución SaaS para automatizar conversaciones por WhatsApp.
 
 PLANES DISPONIBLES:
-- Básico: $299 MXN/mes (1,000 mensajes)
-- Profesional: $799 MXN/mes (5,000 mensajes, integraciones CRM)
-- Empresarial: $1,999 MXN/mes (20,000 mensajes, API personalizada)
-
-HERRAMIENTAS:
-Usa "calculate_pricing" para calcular precios exactos según volumen.
-Usa "capture_lead" para guardar información de clientes interesados.
+- Gratis: 100 mensajes/mes
+- Básico: $499 MXN/mes (1,000 mensajes)
+- Profesional: $999 MXN/mes (3,000 mensajes, acceso a bases de datos (PDFs, URLs))
+- Empresarial: $2,999 MXN/mes (15,000 mensajes, API personalizada)
+- Contáctanos para planes a medida y volúmenes mayores.
 
 IMPORTANTE:
 - Responde en español, sé breve y directo
-- Si preguntan sobre precios, usa la calculadora
-- Si muestran interés, guarda su información
 - Mantén tono profesional pero amigable',
-    'Hablas con tono cálido y profesional. Usas emojis ocasionalmente. Eres conciso - máximo 2-3 frases por respuesta.',
+    'Hablas con tono cálido y profesional. Usas emojis ocasionalmente. Eres conciso - máximo 2-3 frases por respuesta a menos que lo amerite.',
     0.7,
     TRUE, -- RAG disabled for now
     TRUE
@@ -188,6 +226,13 @@ INSERT INTO chatbot_integrations (chatbot_id, integration_id, is_enabled, settin
 (
     '22222222-2222-2222-2222-222222222222',
     '33333333-3333-3333-3333-333333333334',
+    TRUE,
+    '{}'
+),
+-- Enable Contact Owner
+(
+    '22222222-2222-2222-2222-222222222222',
+    '33333333-3333-3333-3333-333333333336',
     TRUE,
     '{}'
 );

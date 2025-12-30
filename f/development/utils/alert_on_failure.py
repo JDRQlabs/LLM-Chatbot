@@ -100,7 +100,7 @@ def main(
             webhook_url=slack_webhook_url
         )
 
-    return {
+    result = {
         "success": True,
         "alert_id": alert_id,
         "slack_sent": slack_result is not None,
@@ -108,6 +108,14 @@ def main(
         "flow_id": flow_id,
         "recover": False,  # Don't retry automatically
     }
+
+    # If called from Step 6 (conditional alert), raise exception to mark flow as FAILED
+    # This makes rate-limited runs show as failed instead of successful
+    if error_name in ["RATE_LIMIT_ERROR", "LLM_ERROR"]:
+        print(f"Alert sent successfully. Raising exception to mark flow as failed.")
+        raise Exception(f"[{severity.upper()}] {error_name}: {error_message[:200]}")
+
+    return result
 
 
 def determine_severity(step_id: str, error_message: str) -> str:

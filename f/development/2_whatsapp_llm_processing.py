@@ -9,6 +9,31 @@ from google.genai import types
 from typing import Dict, Any, List, Optional
 
 
+def build_tool_instructions(tools: List[Dict]) -> str:
+    """
+    Auto-generate tool usage instructions from tool configs.
+    Each MCP provides its own llm_instructions that get injected into the system prompt.
+    """
+    if not tools:
+        return ""
+
+    instructions = "\n\n=== HERRAMIENTAS DISPONIBLES ===\n"
+    instructions += "Tienes acceso a las siguientes herramientas. Úsalas cuando sea apropiado:\n\n"
+
+    for tool in tools:
+        config = tool.get("config", {})
+        tool_name = tool.get("name")
+        description = config.get("description", "")
+        llm_instructions = config.get("llm_instructions", "")
+
+        instructions += f"• {tool_name}: {description}\n"
+        if llm_instructions:
+            instructions += f"  CUÁNDO USAR: {llm_instructions}\n"
+        instructions += "\n"
+
+    return instructions
+
+
 def main(
     context_payload: dict,
     user_message: str,
@@ -102,7 +127,12 @@ def main(
     full_system_prompt = f"{base_prompt}\n{persona}\n{user_context_str}"
     if rag_context:
         full_system_prompt += f"\n{rag_context}"
-    
+
+    # AUTO-INJECT tool instructions from MCP configs
+    tool_instructions = build_tool_instructions(tools)
+    if tool_instructions:
+        full_system_prompt += tool_instructions
+
     # =========================================================================
     # AGENT LOOP: Tool Calling & Multi-Step Reasoning
     # =========================================================================
@@ -229,6 +259,8 @@ def main(
                     temperature=chatbot.get("temperature", 0.7),
                     google_api_key=google_api_key,
                     db_resource=db_resource,
+                    fallback_message_error=chatbot.get("fallback_message_error", "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo más tarde."),
+                    fallback_message_limit=chatbot.get("fallback_message_limit", "Lo siento, he alcanzado mi límite de uso. El administrador ha sido notificado."),
                     max_iterations=5
                 )
                 reply_text = result["reply_text"]
@@ -284,11 +316,22 @@ def main(
 
     except Exception as e:
         print(f"LLM Error: {e}")
-        reply_text = "I'm having trouble thinking right now. Please try again later."
+        error_str = str(e).lower()
+
+        # Determine if this is a quota/limit error
+        is_limit_error = any(keyword in error_str for keyword in ['quota', 'limit', 'rate', 'exhausted', '429'])
+
+        # Use appropriate fallback message
+        if is_limit_error:
+            reply_text = chatbot.get("fallback_message_limit", "Lo siento, he alcanzado mi límite de uso. El administrador ha sido notificado.")
+        else:
+            reply_text = chatbot.get("fallback_message_error", "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo más tarde.")
+
         usage_info = {
             "provider": provider,
             "model": chatbot.get("model_name"),
             "error": str(e),
+            "is_limit_error": is_limit_error,
         }
 
     return {
@@ -639,6 +682,8 @@ def execute_agent_loop_gemini(
     temperature: float,
     google_api_key: str,
     db_resource: str,
+    fallback_message_error: str,
+    fallback_message_limit: str,
     max_iterations: int = 5
 ) -> Dict[str, Any]:
     """
@@ -799,8 +844,16 @@ def execute_agent_loop_gemini(
             import traceback
             print(f"Gemini agent loop error: {e}")
             print(f"Traceback: {traceback.format_exc()}")
+
+            # Determine if this is a quota/limit error
+            error_str = str(e).lower()
+            is_limit_error = any(keyword in error_str for keyword in ['quota', 'limit', 'rate', 'exhausted', '429'])
+
+            # Use appropriate fallback message
+            reply_text = fallback_message_limit if is_limit_error else fallback_message_error
+
             return {
-                "reply_text": "I encountered an error while processing your request. Please try again.",
+                "reply_text": reply_text,
                 "tool_executions": tool_executions,
                 "usage_info": {
                     "provider": "google",
@@ -809,7 +862,8 @@ def execute_agent_loop_gemini(
                     "tokens_output": total_tokens_output,
                     "tool_calls": len(tool_executions),
                     "iterations": iteration,
-                    "error": str(e)
+                    "error": str(e),
+                    "is_limit_error": is_limit_error,
                 }
             }
 
@@ -873,7 +927,7 @@ def execute_tool(
     try:
         if tool_type == "mcp":
             # Execute MCP tool via HTTP
-            return execute_mcp_tool(metadata, arguments)
+            return execute_mcp_tool(tool_name, metadata, arguments, chatbot_id)
 
         elif tool_type == "windmill":
             # Execute Windmill script
@@ -942,28 +996,38 @@ def execute_rag_search(
         return {"error": f"RAG search failed: {str(e)}"}
 
 
-def execute_mcp_tool(metadata: Dict, arguments: Dict) -> Dict[str, Any]:
+def execute_mcp_tool(tool_name: str, metadata: Dict, arguments: Dict, chatbot_id: str) -> Dict[str, Any]:
     """
     Execute MCP tool by calling external MCP server via HTTP.
 
     Args:
+        tool_name: Name of the tool to execute
         metadata: Tool metadata with MCP server URL
-        arguments: Tool arguments
+        arguments: Tool arguments from LLM
+        chatbot_id: ID of the chatbot (auto-injected for MCP servers that need it)
 
     Returns:
         Tool result
     """
     import requests
 
-    mcp_url = metadata.get("mcp_server_url")
-    if not mcp_url:
+    mcp_server_url = metadata.get("mcp_server_url")
+    if not mcp_server_url:
         return {"error": "MCP server URL not configured"}
 
+    # Construct full tool endpoint URL: server_url + /tools/ + tool_name
+    # e.g., http://mcp_pricing_calculator:3001/tools/calculate_pricing
+    tool_endpoint = f"{mcp_server_url.rstrip('/')}/tools/{tool_name}"
+
+    # Auto-inject chatbot_id into all MCP tool calls
+    # Some MCPs (like contact_owner) need it to look up org/notification settings
+    payload = {**arguments, "chatbot_id": chatbot_id}
+
     try:
-        # Call MCP server
+        # Call MCP server at the specific tool endpoint
         response = requests.post(
-            mcp_url,
-            json=arguments,
+            tool_endpoint,
+            json=payload,
             headers={"Content-Type": "application/json"},
             timeout=30  # 30 second timeout
         )
