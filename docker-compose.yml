@@ -219,7 +219,7 @@ services:
       - windmill_server # Ensures Windmill starts before the webhook listener
   
   business_logic_db:
-    image: pgvector/pgvector:pg16
+    build: ./docker/postgres
     container_name: business_logic_db
     restart: unless-stopped
     environment:
@@ -228,6 +228,7 @@ services:
       POSTGRES_DB: ${BUSINESS_LOGIC_DB_NAME}
     volumes:
       - business_logic_db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432" # Expose on port 5433 to avoid conflict with Windmill's DB on 5432
     healthcheck:
