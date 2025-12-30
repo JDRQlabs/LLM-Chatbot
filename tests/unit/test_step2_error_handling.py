@@ -12,10 +12,16 @@ from unittest.mock import Mock, patch
 # Add parent directories to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../f/development'))
 
-# Mock wmill module before importing step2
+# Mock required modules before importing step2
 mock_wmill = Mock()
 mock_wmill.get_variable.return_value = "fake_google_api_key"
 sys.modules['wmill'] = mock_wmill
+
+# Mock Google GenAI SDK
+mock_genai = Mock()
+mock_genai_types = Mock()
+sys.modules['google.genai'] = mock_genai
+sys.modules['google.genai.types'] = mock_genai_types
 
 # Import the module under test
 # Note: Can't import directly because filename starts with number

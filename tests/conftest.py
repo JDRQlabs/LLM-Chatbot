@@ -318,6 +318,73 @@ def sample_llm_result():
     }
 
 
+@pytest.fixture
+def gemini_simple_response():
+    """Simple text response from Gemini (no tools)"""
+    return {
+        "reply_text": "Hello! How can I help?",
+        "updated_variables": {},
+        "tool_executions": [],
+        "retrieved_sources": [],
+        "usage_info": {
+            "provider": "google",
+            "model": "gemini-pro",
+            "tokens_input": 50,
+            "tokens_output": 20,
+            "tool_calls": 0,
+            "rag_used": False,
+            "chunks_retrieved": 0,
+            "iterations": 1
+        }
+    }
+
+
+@pytest.fixture
+def gemini_tool_call_response():
+    """Gemini response with tool call"""
+    return {
+        "reply_text": "I've checked the weather for you.",
+        "updated_variables": {},
+        "tool_executions": [
+            {
+                "tool_name": "get_weather",
+                "arguments": {"city": "NYC"},
+                "result": {"temperature": 72, "condition": "sunny"}
+            }
+        ],
+        "retrieved_sources": [],
+        "usage_info": {
+            "provider": "google",
+            "model": "gemini-pro",
+            "tokens_input": 100,
+            "tokens_output": 50,
+            "tool_calls": 1,
+            "rag_used": False,
+            "chunks_retrieved": 0,
+            "iterations": 2
+        }
+    }
+
+
+@pytest.fixture
+def conversation_history(db_with_data, sample_context_payload):
+    """Pre-populate conversation history"""
+    contact_id = sample_context_payload["user"]["id"]
+    db_with_data.execute("""
+        INSERT INTO messages (contact_id, direction, content, created_at)
+        VALUES
+            (%s, 'incoming', 'Hello', NOW() - INTERVAL '2 minutes'),
+            (%s, 'outgoing', 'Hi there!', NOW() - INTERVAL '1 minute')
+    """, (contact_id, contact_id))
+    return contact_id
+
+
+@pytest.fixture
+def openai_embedding_1536():
+    """Valid 1536-dimensional embedding for testing"""
+    return "[" + ", ".join(["0.1"] * 1536) + "]"
+
+
 # ============================================================================
 # UTILITY FIXTURES
 # ============================================================================

@@ -11,16 +11,23 @@ Tests Step 2's ability to:
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, PropertyMock
 from google.protobuf.struct_pb2 import Struct
+from collections import namedtuple
 
 # Add parent directories to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../f/development'))
 
-# Mock wmill module before importing step2
+# Mock required modules before importing step2
 mock_wmill = Mock()
 mock_wmill.get_variable.return_value = "fake_google_api_key"
 sys.modules['wmill'] = mock_wmill
+
+# Mock Google GenAI SDK
+mock_genai = Mock()
+mock_genai_types = Mock()
+sys.modules['google.genai'] = mock_genai
+sys.modules['google.genai.types'] = mock_genai_types
 
 # Import the module under test
 import importlib.util
@@ -33,11 +40,14 @@ spec.loader.exec_module(step2_module)
 step2_main = step2_module.main
 
 
+# Simple class to hold usage metadata
+UsageMetadata = namedtuple('UsageMetadata', ['prompt_token_count', 'candidates_token_count'])
+
+
 class TestGeminiToolCalling:
     """Test Gemini's tool calling functionality"""
 
-    @patch('google.generativeai.GenerativeModel')
-    def test_gemini_tool_call_with_pricing_calculator(self, mock_genai_model):
+    def test_gemini_tool_call_with_pricing_calculator(self):
         """Test that Gemini can call the pricing calculator tool"""
 
         # Create mock for function call arguments (protobuf Struct)
@@ -58,35 +68,44 @@ class TestGeminiToolCalling:
 
         # Mock first response: model wants to call tool
         mock_response_1 = Mock()
-        mock_response_1.candidates = [Mock()]
-        mock_response_1.candidates[0].content = Mock()
-        mock_response_1.candidates[0].content.parts = [mock_part]
-        mock_response_1.usage_metadata = Mock()
-        mock_response_1.usage_metadata.prompt_token_count = 100
-        mock_response_1.usage_metadata.candidates_token_count = 50
+        mock_candidate_1 = Mock()
+        mock_candidate_1.content = Mock()
+        mock_candidate_1.content.parts = [mock_part]
+        mock_response_1.candidates = [mock_candidate_1]
+        # Create usage metadata with real integers
+        mock_response_1.usage_metadata = UsageMetadata(
+            prompt_token_count=100,
+            candidates_token_count=50
+        )
 
         # Mock second response: final answer after tool execution
+        mock_text_part = Mock(spec=['text'])
+        mock_text_part.text = "Para 3,000 mensajes al mes con el plan Básico, el costo sería $899 MXN/mes."
+        # Make sure hasattr(part, 'function_call') returns False
+        delattr(mock_text_part, 'function_call') if hasattr(mock_text_part, 'function_call') else None
+
+        mock_candidate_2 = Mock()
+        mock_candidate_2.content = Mock()
+        mock_candidate_2.content.parts = [mock_text_part]
+
         mock_response_2 = Mock()
         mock_response_2.text = "Para 3,000 mensajes al mes con el plan Básico, el costo sería $899 MXN/mes."
-        mock_response_2.candidates = [Mock()]
-        mock_response_2.candidates[0].content = Mock()
-        mock_response_2.candidates[0].content.parts = []  # No more function calls
-        mock_response_2.usage_metadata = Mock()
-        mock_response_2.usage_metadata.prompt_token_count = 150
-        mock_response_2.usage_metadata.candidates_token_count = 80
+        mock_response_2.candidates = [mock_candidate_2]
+        # Create usage metadata with real integers
+        mock_response_2.usage_metadata = UsageMetadata(
+            prompt_token_count=150,
+            candidates_token_count=80
+        )
 
-        # Setup mock chat
-        mock_chat = Mock()
-        mock_chat.send_message.side_effect = [mock_response_1, mock_response_2]
+        # Setup mock GenAI Client
+        mock_client = Mock()
+        mock_models = Mock()
+        mock_models.generate_content = Mock(side_effect=[mock_response_1, mock_response_2])
+        mock_client.models = mock_models
 
-        # Setup mock model
-        mock_model_instance = Mock()
-        mock_model_instance.model_name = "gemini-3-flash-preview"
-        mock_model_instance.start_chat.return_value = mock_chat
-        mock_genai_model.return_value = mock_model_instance
-
-        # Mock the MCP server response
-        with patch('requests.post') as mock_post:
+        # Patch genai.Client to return our mock client
+        with patch.object(mock_genai, 'Client', return_value=mock_client), \
+             patch('requests.post') as mock_post:
             mock_mcp_response = Mock()
             mock_mcp_response.ok = True
             mock_mcp_response.json.return_value = {
