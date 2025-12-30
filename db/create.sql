@@ -36,6 +36,17 @@ CREATE TABLE organizations (
     slack_webhook_url TEXT, -- Slack webhook URL for notifications
     notification_email VARCHAR(255), -- Email address for notifications
 
+    -- Knowledge Base Quotas (Configurable per plan tier)
+    max_knowledge_pdfs INT DEFAULT 10,
+    max_knowledge_urls INT DEFAULT 5,
+    max_knowledge_ingestions_per_day INT DEFAULT 20,
+    max_knowledge_storage_mb INT DEFAULT 100,
+
+    -- Knowledge Base Usage Tracking
+    current_knowledge_pdfs INT DEFAULT 0,
+    current_knowledge_urls INT DEFAULT 0,
+    current_storage_mb DECIMAL(10,2) DEFAULT 0,
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -150,6 +161,18 @@ CREATE TABLE knowledge_sources (
 
 CREATE INDEX idx_knowledge_sources_chatbot ON knowledge_sources(chatbot_id);
 CREATE INDEX idx_knowledge_sources_status ON knowledge_sources(chatbot_id, sync_status);
+
+-- 6b. DAILY INGESTION COUNTS (Knowledge Base Usage Tracking)
+CREATE TABLE daily_ingestion_counts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    ingestion_count INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(organization_id, date)
+);
+
+CREATE INDEX idx_ingestion_counts_org_date ON daily_ingestion_counts(organization_id, date);
 
 -- 7. CONTACTS (End Users)
 CREATE TABLE contacts (
@@ -394,6 +417,49 @@ CREATE TRIGGER trigger_update_chunks_count
 AFTER INSERT OR DELETE ON document_chunks
 FOR EACH ROW
 EXECUTE FUNCTION update_knowledge_source_chunks_count();
+
+-- Trigger function to auto-increment knowledge base counters
+CREATE OR REPLACE FUNCTION increment_knowledge_counters()
+RETURNS TRIGGER AS $$
+DECLARE
+    org_id UUID;
+    file_size_mb DECIMAL(10,2);
+BEGIN
+    -- Get organization_id from chatbot
+    SELECT c.organization_id INTO org_id
+    FROM chatbots c
+    WHERE c.id = NEW.chatbot_id;
+
+    -- Calculate file size in MB
+    file_size_mb := COALESCE(NEW.file_size_bytes / 1048576.0, 0);
+
+    -- Increment counters based on source type
+    IF NEW.source_type IN ('pdf', 'doc') THEN
+        UPDATE organizations
+        SET current_knowledge_pdfs = current_knowledge_pdfs + 1,
+            current_storage_mb = current_storage_mb + file_size_mb
+        WHERE id = org_id;
+    ELSIF NEW.source_type = 'url' THEN
+        UPDATE organizations
+        SET current_knowledge_urls = current_knowledge_urls + 1,
+            current_storage_mb = current_storage_mb + file_size_mb
+        WHERE id = org_id;
+    END IF;
+
+    -- Increment daily ingestion count
+    INSERT INTO daily_ingestion_counts (organization_id, date, ingestion_count)
+    VALUES (org_id, CURRENT_DATE, 1)
+    ON CONFLICT (organization_id, date)
+    DO UPDATE SET ingestion_count = daily_ingestion_counts.ingestion_count + 1;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER knowledge_source_counter_trigger
+AFTER INSERT ON knowledge_sources
+FOR EACH ROW
+EXECUTE FUNCTION increment_knowledge_counters();
 
 CREATE INDEX idx_usage_logs_org_date ON usage_logs(organization_id, date_bucket);
 CREATE INDEX idx_usage_logs_chatbot_date ON usage_logs(chatbot_id, date_bucket);

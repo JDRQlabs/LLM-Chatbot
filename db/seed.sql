@@ -20,6 +20,10 @@ INSERT INTO organizations (
     notification_method,
     slack_webhook_url,
     notification_email,
+    max_knowledge_pdfs,
+    max_knowledge_urls,
+    max_knowledge_ingestions_per_day,
+    max_knowledge_storage_mb,
     is_active
 ) VALUES (
     '11111111-1111-1111-1111-111111111111',
@@ -33,6 +37,10 @@ INSERT INTO organizations (
     'slack', -- Enable Slack notifications
     '${SLACK_WEBHOOK_URL}', -- Slack webhook URL from .env
     '${OWNER_EMAIL}', -- Fallback to owner email
+    50, -- 50 PDFs for pro plan
+    20, -- 20 URLs for pro plan
+    100, -- 100 ingestions per day
+    500, -- 500 MB storage limit
     TRUE
 );
 
