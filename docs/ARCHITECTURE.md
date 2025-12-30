@@ -15,7 +15,7 @@ A Multi-tenant WhatsApp Chatbot Platform (SaaS) inspired by FastBots.ai.
   - Hosting: Self-hosted via Docker Compose.
 - **Database:** PostgreSQL
   - Stores Tenant configs, User context, and Chat Logs.
-- **Vector Store:** Pinecone (MVP) / pgvector (Future)
+- **Vector Store:** pgvector
   - Stores embeddings of uploaded PDFs/Text for RAG.
 - **AI/LLM:** OpenAI (GPT-4o / GPT-4o-mini)
   - Handles reasoning, tool selection, and text generation.
@@ -35,8 +35,8 @@ flowchart LR
     end
     
     subgraph "External Services"
-        Windmill -->|1. Search| Pinecone[(Vector DB)]
-        Windmill -->|2. Reason/Gen| OpenAI[LLM API]
+        Windmill -->|1. Search| pgvector[(Vector DB)]
+        Windmill -->|2. Reason/Gen| OpenAI/Google[LLM API]
     end
     
     Windmill -- 3. Send Reply --> Meta

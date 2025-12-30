@@ -1,0 +1,30 @@
+summary: ''
+description: ''
+lock: '!inline f/development/3_3_log_usage.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    context_payload:
+      type: object
+      description: ''
+      default: null
+      properties: {}
+    db_resource:
+      type: string
+      description: ''
+      default: f/development/business_layer_db_postgreSQL
+      originalType: string
+    llm_result:
+      type: object
+      description: ''
+      default: null
+      properties: {}
+    webhook_event_id:
+      type: integer
+      description: ''
+      default: null
+  required:
+    - context_payload
+    - llm_result

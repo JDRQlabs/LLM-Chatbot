@@ -62,7 +62,7 @@ load_env() {
 
 load_env
 
-WINDMILL_URL="http://localhost:8081/api/w/development/jobs/run_wait_result/f/f/development/whatspp_webhook_processor"
+WINDMILL_URL="http://localhost:8081/api/w/development/jobs/run_wait_result/f/f/development/whatsapp_webhook_processor"
 TOKEN="$WINDMILL_TOKEN"
 WHATSAPP_PHONE_NUMBER_ID="$WHATSAPP_PHONE_NUMBER_ID"
 WHATSAPP_USER_PHONE="5216441921909"

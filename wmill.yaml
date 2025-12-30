@@ -22,3 +22,5 @@ nonDottedPaths: true
 gitBranches:
   master:
     overrides: {}
+  claude-development:
+    overrides: {}

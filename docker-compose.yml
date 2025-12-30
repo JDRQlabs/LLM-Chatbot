@@ -219,7 +219,7 @@ services:
       - windmill_server # Ensures Windmill starts before the webhook listener
   
   business_logic_db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: business_logic_db
     restart: unless-stopped
     environment:
