@@ -9,6 +9,9 @@ value:
           db_resource:
             type: static
             value: f/development/business_layer_db_postgreSQL
+          message_id:
+            type: javascript
+            expr: flow_input.message_id
           user_name:
             type: javascript
             expr: flow_input.user_name
