@@ -93,14 +93,38 @@ def main(
         full_system_prompt += f"\n{rag_context}"
     
     # =========================================================================
-    # STUB: MCP / TOOLS
+    # AGENT LOOP: Tool Calling & Multi-Step Reasoning
     # =========================================================================
-    # TODO: Implement tool calling
-    # For now, tools are loaded but not used
-    
+    # If tools are available, use agent loop for multi-step reasoning
+    # Otherwise, fall back to simple LLM call
+
     reply_text = ""
     updated_variables = {}
     usage_info = {}
+    tool_executions = []
+
+    # Prepare tool definitions for LLM
+    tool_definitions = prepare_tool_definitions(tools, chatbot["id"])
+
+    # Add built-in RAG search tool if RAG is enabled
+    if chatbot.get("rag_config", {}).get("enabled"):
+        tool_definitions.append({
+            "type": "function",
+            "function": {
+                "name": "search_knowledge_base",
+                "description": "Search the chatbot's knowledge base for relevant information to answer user questions",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to find relevant information"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        })
 
     try:
         if provider == "openai":
@@ -123,25 +147,46 @@ def main(
             # Add Current User Message
             messages.append({"role": "user", "content": user_message})
 
-            print(f"Calling OpenAI with {len(messages)} messages (RAG: {bool(rag_context)})")
-            
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=chatbot.get("temperature", 0.7),
-            )
+            # Use agent loop if tools are available
+            if tool_definitions:
+                print(f"Agent loop enabled with {len(tool_definitions)} tools")
+                result = execute_agent_loop_openai(
+                    client=client,
+                    model_name=model_name,
+                    messages=messages,
+                    tools=tool_definitions,
+                    chatbot_id=chatbot["id"],
+                    temperature=chatbot.get("temperature", 0.7),
+                    openai_api_key=openai_api_key,
+                    db_resource=db_resource,
+                    max_iterations=5
+                )
+                reply_text = result["reply_text"]
+                tool_executions = result["tool_executions"]
+                usage_info = result["usage_info"]
+                usage_info["rag_used"] = bool(rag_context)
+                usage_info["chunks_retrieved"] = len(retrieved_chunks)
+            else:
+                # Simple LLM call without tools
+                print(f"Calling OpenAI without tools (RAG: {bool(rag_context)})")
 
-            reply_text = response.choices[0].message.content
-            
-            # Extract usage info
-            usage_info = {
-                "provider": "openai",
-                "model": model_name,
-                "tokens_input": response.usage.prompt_tokens,
-                "tokens_output": response.usage.completion_tokens,
-                "rag_used": bool(rag_context),
-                "chunks_retrieved": len(retrieved_chunks),
-            }
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=chatbot.get("temperature", 0.7),
+                )
+
+                reply_text = response.choices[0].message.content
+
+                # Extract usage info
+                usage_info = {
+                    "provider": "openai",
+                    "model": model_name,
+                    "tokens_input": response.usage.prompt_tokens,
+                    "tokens_output": response.usage.completion_tokens,
+                    "rag_used": bool(rag_context),
+                    "chunks_retrieved": len(retrieved_chunks),
+                }
 
         elif provider == "google":
             if not google_api_key:
@@ -209,6 +254,7 @@ def main(
         "reply_text": reply_text,
         "updated_variables": updated_variables,
         "usage_info": usage_info,
+        "tool_executions": tool_executions,
         "retrieved_sources": [
             {
                 "source_name": chunk["source_name"],
@@ -295,3 +341,424 @@ def estimate_tokens(text: str) -> int:
     Used as fallback when actual token counts aren't available.
     """
     return max(len(text) // 4, 1)
+
+
+# =========================================================================
+# AGENT LOOP IMPLEMENTATION
+# =========================================================================
+
+def prepare_tool_definitions(tools: List[Dict], chatbot_id: str) -> List[Dict]:
+    """
+    Convert tool records from database into OpenAI function calling format.
+
+    Args:
+        tools: List of tool records from chatbot_integrations table
+        chatbot_id: ID of the chatbot
+
+    Returns:
+        List of tool definitions in OpenAI format
+    """
+    tool_defs = []
+
+    for tool in tools:
+        # Skip disabled tools
+        if not tool.get("enabled", True):
+            continue
+
+        # Format depends on tool type
+        tool_type = tool.get("provider", "custom")
+
+        if tool_type == "mcp":
+            # MCP tools from external servers
+            tool_defs.append({
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", "unknown_tool"),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {
+                        "type": "object",
+                        "properties": {}
+                    })
+                },
+                "_metadata": {
+                    "tool_type": "mcp",
+                    "mcp_server_url": tool.get("settings", {}).get("mcp_server_url"),
+                    "integration_id": tool.get("id")
+                }
+            })
+
+        elif tool_type == "windmill":
+            # Windmill script tools
+            tool_defs.append({
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", "unknown_tool"),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {
+                        "type": "object",
+                        "properties": {}
+                    })
+                },
+                "_metadata": {
+                    "tool_type": "windmill",
+                    "script_path": tool.get("settings", {}).get("script_path"),
+                    "integration_id": tool.get("id")
+                }
+            })
+
+    return tool_defs
+
+
+def execute_agent_loop_openai(
+    client: OpenAI,
+    model_name: str,
+    messages: List[Dict],
+    tools: List[Dict],
+    chatbot_id: str,
+    temperature: float,
+    openai_api_key: str,
+    db_resource: str,
+    max_iterations: int = 5
+) -> Dict[str, Any]:
+    """
+    Execute agent loop with tool calling for OpenAI.
+
+    The agent iteratively:
+    1. Calls LLM with tool definitions
+    2. If LLM wants to use a tool, execute it
+    3. Feed result back to LLM
+    4. Repeat until LLM returns final answer or max iterations reached
+
+    Args:
+        client: OpenAI client
+        model_name: Model to use
+        messages: Conversation messages
+        tools: Tool definitions
+        chatbot_id: ID of chatbot
+        temperature: Sampling temperature
+        openai_api_key: API key for embeddings
+        db_resource: Database resource path
+        max_iterations: Maximum tool call iterations
+
+    Returns:
+        Dict with reply_text, tool_executions, and usage_info
+    """
+    iteration = 0
+    tool_executions = []
+    total_tokens_input = 0
+    total_tokens_output = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"Agent iteration {iteration}/{max_iterations}")
+
+        # Call LLM with tools
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",  # Let model decide when to use tools
+                temperature=temperature
+            )
+
+            # Track token usage
+            total_tokens_input += response.usage.prompt_tokens
+            total_tokens_output += response.usage.completion_tokens
+
+            choice = response.choices[0]
+            finish_reason = choice.finish_reason
+
+            # Check if model wants to call a tool
+            if finish_reason == "tool_calls" and choice.message.tool_calls:
+                print(f"LLM requested {len(choice.message.tool_calls)} tool calls")
+
+                # Add assistant message with tool calls
+                messages.append(choice.message)
+
+                # Execute each tool call
+                for tool_call in choice.message.tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        tool_args = {}
+
+                    print(f"Executing tool: {tool_name} with args: {tool_args}")
+
+                    # Execute the tool
+                    tool_result = execute_tool(
+                        tool_name=tool_name,
+                        arguments=tool_args,
+                        tools=tools,
+                        chatbot_id=chatbot_id,
+                        openai_api_key=openai_api_key,
+                        db_resource=db_resource
+                    )
+
+                    # Track execution
+                    tool_executions.append({
+                        "tool_name": tool_name,
+                        "arguments": tool_args,
+                        "result": tool_result,
+                        "status": "success" if not tool_result.get("error") else "failed",
+                        "iteration": iteration
+                    })
+
+                    # Add tool result to messages
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": json.dumps(tool_result)
+                    })
+
+                # Continue loop to get next LLM response
+                continue
+
+            elif finish_reason == "stop":
+                # Model returned final answer
+                reply_text = choice.message.content
+
+                return {
+                    "reply_text": reply_text,
+                    "tool_executions": tool_executions,
+                    "usage_info": {
+                        "provider": "openai",
+                        "model": model_name,
+                        "tokens_input": total_tokens_input,
+                        "tokens_output": total_tokens_output,
+                        "tool_calls": len(tool_executions),
+                        "iterations": iteration
+                    }
+                }
+
+            else:
+                # Unexpected finish reason
+                print(f"Unexpected finish_reason: {finish_reason}")
+                reply_text = choice.message.content or "I encountered an issue processing your request."
+
+                return {
+                    "reply_text": reply_text,
+                    "tool_executions": tool_executions,
+                    "usage_info": {
+                        "provider": "openai",
+                        "model": model_name,
+                        "tokens_input": total_tokens_input,
+                        "tokens_output": total_tokens_output,
+                        "tool_calls": len(tool_executions),
+                        "iterations": iteration,
+                        "finish_reason": finish_reason
+                    }
+                }
+
+        except Exception as e:
+            print(f"Agent loop error: {e}")
+            return {
+                "reply_text": "I encountered an error while processing your request.",
+                "tool_executions": tool_executions,
+                "usage_info": {
+                    "provider": "openai",
+                    "model": model_name,
+                    "tokens_input": total_tokens_input,
+                    "tokens_output": total_tokens_output,
+                    "tool_calls": len(tool_executions),
+                    "iterations": iteration,
+                    "error": str(e)
+                }
+            }
+
+    # Max iterations reached
+    print(f"Max iterations ({max_iterations}) reached")
+    return {
+        "reply_text": "I need more time to think about this. Could you please rephrase your question?",
+        "tool_executions": tool_executions,
+        "usage_info": {
+            "provider": "openai",
+            "model": model_name,
+            "tokens_input": total_tokens_input,
+            "tokens_output": total_tokens_output,
+            "tool_calls": len(tool_executions),
+            "iterations": iteration,
+            "max_iterations_reached": True
+        }
+    }
+
+
+def execute_tool(
+    tool_name: str,
+    arguments: Dict[str, Any],
+    tools: List[Dict],
+    chatbot_id: str,
+    openai_api_key: str,
+    db_resource: str
+) -> Dict[str, Any]:
+    """
+    Execute a single tool call.
+
+    Args:
+        tool_name: Name of the tool to execute
+        arguments: Tool arguments
+        tools: List of available tool definitions
+        chatbot_id: ID of chatbot
+        openai_api_key: API key for OpenAI
+        db_resource: Database resource path
+
+    Returns:
+        Tool execution result
+    """
+    # Find tool definition
+    tool = next((t for t in tools if t.get("function", {}).get("name") == tool_name), None)
+
+    if not tool:
+        # Check if it's a built-in tool
+        if tool_name == "search_knowledge_base":
+            return execute_rag_search(
+                chatbot_id=chatbot_id,
+                query=arguments.get("query", ""),
+                openai_api_key=openai_api_key,
+                db_resource=db_resource
+            )
+
+        return {"error": f"Tool '{tool_name}' not found"}
+
+    metadata = tool.get("_metadata", {})
+    tool_type = metadata.get("tool_type", "unknown")
+
+    try:
+        if tool_type == "mcp":
+            # Execute MCP tool via HTTP
+            return execute_mcp_tool(metadata, arguments)
+
+        elif tool_type == "windmill":
+            # Execute Windmill script
+            return execute_windmill_tool(metadata, arguments)
+
+        else:
+            return {"error": f"Unknown tool type: {tool_type}"}
+
+    except Exception as e:
+        print(f"Tool execution error ({tool_name}): {e}")
+        return {"error": str(e)}
+
+
+def execute_rag_search(
+    chatbot_id: str,
+    query: str,
+    openai_api_key: str,
+    db_resource: str
+) -> Dict[str, Any]:
+    """
+    Execute RAG search as a tool.
+
+    Args:
+        chatbot_id: ID of chatbot
+        query: Search query
+        openai_api_key: API key for embeddings
+        db_resource: Database resource path
+
+    Returns:
+        Search results
+    """
+    try:
+        chunks = retrieve_knowledge(
+            chatbot_id=chatbot_id,
+            query=query,
+            openai_api_key=openai_api_key,
+            db_resource=db_resource,
+            top_k=5,
+            similarity_threshold=0.7
+        )
+
+        if not chunks:
+            return {
+                "success": True,
+                "results": [],
+                "message": "No relevant information found in knowledge base."
+            }
+
+        # Format results for LLM
+        formatted_results = []
+        for chunk in chunks:
+            formatted_results.append({
+                "content": chunk["content"],
+                "source": chunk["source_name"],
+                "relevance": f"{chunk['similarity']:.0%}",
+                "metadata": chunk.get("metadata", {})
+            })
+
+        return {
+            "success": True,
+            "results": formatted_results,
+            "count": len(formatted_results)
+        }
+
+    except Exception as e:
+        return {"error": f"RAG search failed: {str(e)}"}
+
+
+def execute_mcp_tool(metadata: Dict, arguments: Dict) -> Dict[str, Any]:
+    """
+    Execute MCP tool by calling external MCP server via HTTP.
+
+    Args:
+        metadata: Tool metadata with MCP server URL
+        arguments: Tool arguments
+
+    Returns:
+        Tool result
+    """
+    import requests
+
+    mcp_url = metadata.get("mcp_server_url")
+    if not mcp_url:
+        return {"error": "MCP server URL not configured"}
+
+    try:
+        # Call MCP server
+        response = requests.post(
+            mcp_url,
+            json=arguments,
+            headers={"Content-Type": "application/json"},
+            timeout=30  # 30 second timeout
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+    except requests.Timeout:
+        return {"error": "MCP server timeout (30s)"}
+    except requests.RequestException as e:
+        return {"error": f"MCP server error: {str(e)}"}
+
+
+def execute_windmill_tool(metadata: Dict, arguments: Dict) -> Dict[str, Any]:
+    """
+    Execute Windmill script tool.
+
+    Args:
+        metadata: Tool metadata with script path
+        arguments: Tool arguments
+
+    Returns:
+        Tool result
+    """
+    script_path = metadata.get("script_path")
+    if not script_path:
+        return {"error": "Windmill script path not configured"}
+
+    try:
+        # Execute Windmill script synchronously
+        result = wmill.run_script_by_path(
+            path=script_path,
+            args=arguments,
+            timeout=30  # 30 second timeout
+        )
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except Exception as e:
+        return {"error": f"Windmill script execution failed: {str(e)}"}
