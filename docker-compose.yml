@@ -215,8 +215,20 @@ services:
       - WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN} # Defined in your .env
       - WINDMILL_TOKEN=${WINDMILL_TOKEN}             # Defined in your .env
       - WINDMILL_MESSAGE_PROCESSING_ENDPOINT=${WINDMILL_MESSAGE_PROCESSING_ENDPOINT} # Defined in your .env
+      - DB_HOST=business_logic_db
+      - DB_PORT=5432
+      - DB_USER=${BUSINESS_LOGIC_DB_USER}
+      - DB_PASSWORD=${BUSINESS_LOGIC_DB_PASSWORD}
+      - DB_NAME=${BUSINESS_LOGIC_DB_NAME}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
-      - windmill_server # Ensures Windmill starts before the webhook listener
+      business_logic_db:
+        condition: service_healthy
+      windmill_server:
+        condition: service_started
+      redis:
+        condition: service_healthy
   
   business_logic_db:
     build: ./docker/postgres
@@ -315,14 +327,31 @@ services:
       - WINDMILL_URL=http://windmill_server:8000
       - WINDMILL_TOKEN=${WINDMILL_TOKEN}
       - WINDMILL_WORKSPACE=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       business_logic_db:
         condition: service_healthy
       windmill_server:
         condition: service_started
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
+      timeout: 3s
+      retries: 3
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: fastbots_redis
+    restart: unless-stopped
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
       timeout: 3s
       retries: 3
     logging: *default-logging
