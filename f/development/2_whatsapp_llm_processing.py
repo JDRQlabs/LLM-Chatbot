@@ -4,7 +4,8 @@ import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from openai import OpenAI
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Dict, Any, List, Optional
 
 
@@ -202,51 +203,81 @@ def main(
             if not google_api_key:
                 return {"error": "Missing Google API Key"}
 
-            model_name = chatbot.get("model_name", "gemini-pro")
+            model_name = chatbot.get("model_name", "gemini-3-flash-preview")
             print(f"Using Google with model: {model_name}")
 
-            genai.configure(api_key=google_api_key)
-            model = genai.GenerativeModel(model_name)
+            client = genai.Client(api_key=google_api_key)
 
-            # Format Messages for Gemini
+            # Format Messages for Gemini (new SDK uses different format)
             chat_history = []
             for msg in history:
                 role = "user" if msg["role"] == "user" else "model"
                 if msg.get("content"):
-                    chat_history.append({"role": role, "parts": [msg["content"]]})
+                    chat_history.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
 
-            # Start Chat Session
-            chat = model.start_chat(history=chat_history)
-
-            # Combine system prompt + user message
-            final_input = f"{full_system_prompt}\n\nUser Message: {user_message}"
-            
-            print(f"Calling Google Gemini (RAG: {bool(rag_context)})")
-            
-            response = chat.send_message(final_input)
-            reply_text = response.text
-            
-            # Extract usage info (Gemini provides this in usage_metadata)
-            usage_metadata = getattr(response, 'usage_metadata', None)
-            if usage_metadata:
-                usage_info = {
-                    "provider": "google",
-                    "model": model_name,
-                    "tokens_input": usage_metadata.prompt_token_count,
-                    "tokens_output": usage_metadata.candidates_token_count,
-                    "rag_used": bool(rag_context),
-                    "chunks_retrieved": len(retrieved_chunks),
-                }
+            # Use agent loop if tools are available
+            if tool_definitions:
+                print(f"Gemini agent loop enabled with {len(tool_definitions)} tools")
+                result = execute_agent_loop_gemini(
+                    client=client,
+                    model_name=model_name,
+                    system_prompt=full_system_prompt,
+                    user_message=user_message,
+                    chat_history=chat_history,
+                    tools=tool_definitions,
+                    chatbot_id=chatbot["id"],
+                    temperature=chatbot.get("temperature", 0.7),
+                    google_api_key=google_api_key,
+                    db_resource=db_resource,
+                    max_iterations=5
+                )
+                reply_text = result["reply_text"]
+                tool_executions = result["tool_executions"]
+                usage_info = result["usage_info"]
+                usage_info["rag_used"] = bool(rag_context)
+                usage_info["chunks_retrieved"] = len(retrieved_chunks)
             else:
-                # Fallback if metadata not available
-                usage_info = {
-                    "provider": "google",
-                    "model": model_name,
-                    "tokens_input": estimate_tokens(final_input),
-                    "tokens_output": estimate_tokens(reply_text),
-                    "rag_used": bool(rag_context),
-                    "chunks_retrieved": len(retrieved_chunks),
-                }
+                # Simple LLM call without tools
+                print(f"Calling Google Gemini without tools (RAG: {bool(rag_context)})")
+
+                # Combine system prompt + user message
+                final_input = f"{full_system_prompt}\n\nUser Message: {user_message}"
+
+                # Add current message to history
+                messages = chat_history + [types.Content(role="user", parts=[types.Part(text=final_input)])]
+
+                # Call Gemini with new SDK
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=messages,
+                    config=types.GenerateContentConfig(
+                        temperature=chatbot.get("temperature", 0.7)
+                    )
+                )
+
+                reply_text = response.text
+
+                # Extract usage info (new SDK structure)
+                usage_metadata = getattr(response, 'usage_metadata', None)
+                if usage_metadata:
+                    usage_info = {
+                        "provider": "google",
+                        "model": model_name,
+                        "tokens_input": usage_metadata.prompt_token_count,
+                        "tokens_output": usage_metadata.candidates_token_count,
+                        "rag_used": bool(rag_context),
+                        "chunks_retrieved": len(retrieved_chunks),
+                    }
+                else:
+                    # Fallback if metadata not available
+                    usage_info = {
+                        "provider": "google",
+                        "model": model_name,
+                        "tokens_input": estimate_tokens(final_input),
+                        "tokens_output": estimate_tokens(reply_text),
+                        "rag_used": bool(rag_context),
+                        "chunks_retrieved": len(retrieved_chunks),
+                    }
 
         else:
             return {"error": f"Unknown provider: {provider}"}
@@ -380,20 +411,22 @@ def prepare_tool_definitions(tools: List[Dict], chatbot_id: str) -> List[Dict]:
 
         if tool_type == "mcp":
             # MCP tools from external servers
+            # Extract description and parameters from config
+            config = tool.get("config", {})
             tool_defs.append({
                 "type": "function",
                 "function": {
                     "name": tool.get("name", "unknown_tool"),
-                    "description": tool.get("description", ""),
-                    "parameters": tool.get("parameters", {
+                    "description": config.get("description", ""),
+                    "parameters": config.get("parameters", {
                         "type": "object",
                         "properties": {}
                     })
                 },
                 "_metadata": {
                     "tool_type": "mcp",
-                    "mcp_server_url": tool.get("settings", {}).get("mcp_server_url"),
-                    "integration_id": tool.get("id")
+                    "mcp_server_url": config.get("server_url"),
+                    "integration_id": tool.get("integration_id")
                 }
             })
 
@@ -585,6 +618,208 @@ def execute_agent_loop_openai(
         "tool_executions": tool_executions,
         "usage_info": {
             "provider": "openai",
+            "model": model_name,
+            "tokens_input": total_tokens_input,
+            "tokens_output": total_tokens_output,
+            "tool_calls": len(tool_executions),
+            "iterations": iteration,
+            "max_iterations_reached": True
+        }
+    }
+
+
+def execute_agent_loop_gemini(
+    client: Any,
+    model_name: str,
+    system_prompt: str,
+    user_message: str,
+    chat_history: List[Any],
+    tools: List[Dict],
+    chatbot_id: str,
+    temperature: float,
+    google_api_key: str,
+    db_resource: str,
+    max_iterations: int = 5
+) -> Dict[str, Any]:
+    """
+    Execute agent loop with tool calling for Google Gemini using new SDK.
+
+    Args:
+        client: Gemini Client instance (new SDK)
+        model_name: Model name (e.g., "gemini-3-flash-preview")
+        system_prompt: System prompt
+        user_message: Current user message
+        chat_history: Conversation history as list of types.Content
+        tools: Tool definitions
+        chatbot_id: ID of chatbot
+        temperature: Sampling temperature
+        google_api_key: API key for embeddings
+        db_resource: Database resource path
+        max_iterations: Maximum tool call iterations
+
+    Returns:
+        Dict with reply_text, tool_executions, and usage_info
+    """
+    iteration = 0
+    tool_executions = []
+    total_tokens_input = 0
+    total_tokens_output = 0
+
+    # Convert tool definitions to Gemini function declarations format (new SDK)
+    function_declarations = []
+    for tool in tools:
+        if "function" in tool:
+            func = tool["function"]
+            function_declarations.append(
+                types.FunctionDeclaration(
+                    name=func["name"],
+                    description=func.get("description", ""),
+                    parameters=func.get("parameters", {})
+                )
+            )
+
+    # Create tool config (new SDK)
+    tool_config = None
+    if function_declarations:
+        tool_config = types.Tool(function_declarations=function_declarations)
+
+    # Build message history - start with system prompt + user message
+    first_message = f"{system_prompt}\n\nUser Message: {user_message}"
+    messages = chat_history + [types.Content(role="user", parts=[types.Part(text=first_message)])]
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"Gemini agent iteration {iteration}/{max_iterations}")
+
+        try:
+            # Call Gemini with tools (new SDK)
+            config_params = {
+                "temperature": temperature
+            }
+            if tool_config:
+                config_params["tools"] = [tool_config]
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=messages,
+                config=types.GenerateContentConfig(**config_params)
+            )
+
+            # Track token usage
+            usage_metadata = getattr(response, 'usage_metadata', None)
+            if usage_metadata:
+                total_tokens_input += usage_metadata.prompt_token_count
+                total_tokens_output += usage_metadata.candidates_token_count
+
+            # Check if model wants to call functions
+            candidate = response.candidates[0]
+            parts = candidate.content.parts
+
+            # Check for function calls in parts
+            function_calls = [part for part in parts if hasattr(part, 'function_call') and part.function_call]
+
+            if function_calls:
+                print(f"Gemini requested {len(function_calls)} function calls")
+
+                # Add assistant message with function calls to history
+                messages.append(candidate.content)
+
+                # Execute each function call
+                function_response_parts = []
+                for part in function_calls:
+                    fc = part.function_call
+                    tool_name = fc.name
+
+                    # Convert function call args to dict (new SDK)
+                    tool_args = {}
+                    if hasattr(fc, 'args') and fc.args:
+                        # fc.args is a dict-like object in new SDK
+                        tool_args = dict(fc.args)
+
+                    print(f"Executing tool: {tool_name} with args: {tool_args}")
+
+                    # Execute the tool
+                    tool_result = execute_tool(
+                        tool_name=tool_name,
+                        arguments=tool_args,
+                        tools=tools,
+                        chatbot_id=chatbot_id,
+                        openai_api_key=google_api_key,  # Used for RAG embeddings
+                        db_resource=db_resource
+                    )
+
+                    # Track execution
+                    tool_executions.append({
+                        "tool_name": tool_name,
+                        "arguments": tool_args,
+                        "result": tool_result,
+                        "status": "success" if not tool_result.get("error") else "failed",
+                        "iteration": iteration
+                    })
+
+                    # Create function response (new SDK)
+                    function_response_parts.append(
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                name=tool_name,
+                                response=tool_result
+                            )
+                        )
+                    )
+
+                # Add function responses to messages
+                messages.append(
+                    types.Content(
+                        role="function",
+                        parts=function_response_parts
+                    )
+                )
+
+                # Continue loop to get next response
+                continue
+
+            # No function calls - this is the final response
+            reply_text = response.text
+            print(f"Gemini returned final answer after {iteration} iterations")
+
+            return {
+                "reply_text": reply_text,
+                "tool_executions": tool_executions,
+                "usage_info": {
+                    "provider": "google",
+                    "model": model_name,
+                    "tokens_input": total_tokens_input,
+                    "tokens_output": total_tokens_output,
+                    "tool_calls": len(tool_executions),
+                    "iterations": iteration
+                }
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"Gemini agent loop error: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            return {
+                "reply_text": "I encountered an error while processing your request. Please try again.",
+                "tool_executions": tool_executions,
+                "usage_info": {
+                    "provider": "google",
+                    "model": model_name,
+                    "tokens_input": total_tokens_input,
+                    "tokens_output": total_tokens_output,
+                    "tool_calls": len(tool_executions),
+                    "iterations": iteration,
+                    "error": str(e)
+                }
+            }
+
+    # Max iterations reached
+    print(f"Max iterations ({max_iterations}) reached")
+    return {
+        "reply_text": "Necesito más información para responder. ¿Podrías reformular tu pregunta?",
+        "tool_executions": tool_executions,
+        "usage_info": {
+            "provider": "google",
             "model": model_name,
             "tokens_input": total_tokens_input,
             "tokens_output": total_tokens_output,

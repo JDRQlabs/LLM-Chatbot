@@ -48,32 +48,71 @@ INSERT INTO users (id, organization_id, email, full_name, role) VALUES
 );
 
 -- 3. Create Integrations (MCP Tools)
-INSERT INTO org_integrations (id, organization_id, provider, name, config, is_active) VALUES 
--- Calculator Tool
+INSERT INTO org_integrations (id, organization_id, provider, name, config, is_active) VALUES
+-- Pricing Calculator Tool
 (
     '33333333-3333-3333-3333-333333333333',
     '11111111-1111-1111-1111-111111111111',
-    'mcp_tool',
-    'Math Calculator',
+    'mcp',
+    'calculate_pricing',
     '{
         "type": "mcp_server",
-        "server_url": "http://mcp-math:8080",
-        "tools": ["calculate", "solve_equation"],
-        "description": "Mathematical calculations and equation solving"
+        "server_url": "http://mcp_pricing_calculator:3001",
+        "description": "Calcula precios del chatbot de WhatsApp según volumen de mensajes y tier",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message_volume": {
+                    "type": "number",
+                    "description": "Número de mensajes al mes"
+                },
+                "tier": {
+                    "type": "string",
+                    "description": "Tier del plan: basic, professional, o enterprise",
+                    "enum": ["basic", "professional", "enterprise"]
+                }
+            },
+            "required": ["message_volume"]
+        }
     }',
     TRUE
 ),
--- Weather Tool
+-- Lead Capture Tool
 (
     '33333333-3333-3333-3333-333333333334',
     '11111111-1111-1111-1111-111111111111',
-    'mcp_tool',
-    'Weather API',
+    'mcp',
+    'capture_lead',
     '{
         "type": "mcp_server",
-        "server_url": "http://mcp-weather:8080",
-        "tools": ["get_weather", "get_forecast"],
-        "description": "Current weather and forecasts"
+        "server_url": "http://mcp_lead_capture:3002",
+        "description": "Guarda información de un cliente potencial interesado en el servicio",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Nombre del cliente"
+                },
+                "phone": {
+                    "type": "string",
+                    "description": "Teléfono del cliente"
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email del cliente (opcional)"
+                },
+                "company": {
+                    "type": "string",
+                    "description": "Nombre de la empresa (opcional)"
+                },
+                "estimated_messages": {
+                    "type": "number",
+                    "description": "Volumen estimado de mensajes al mes (opcional)"
+                }
+            },
+            "required": ["name", "phone"]
+        }
     }',
     TRUE
 ),
@@ -111,29 +150,46 @@ INSERT INTO chatbots (
     '11111111-1111-1111-1111-111111111111',
     'MVP Test Bot',
     '${WHATSAPP_PHONE_NUMBER_ID}',
-    'test_business_account_123',
+    'JD-labs-WABA-ID',
     '${WHATSAPP_ACCESS_TOKEN}',
     'gemini-3-flash-preview',
-    'You are a helpful customer service assistant for Dev Corp. You can help with calculations, check weather, and answer questions about our products. Always be friendly and professional.',
-    'You speak in a warm, professional tone. You use emojis occasionally to be friendly. You are knowledgeable but not overly technical.',
+    'Eres un representante de ventas y servicio al cliente para JD Labs, empresa en Guadalajara, México. Vendes "Chatbot de WhatsApp" - una solución SaaS para automatizar conversaciones por WhatsApp.
+
+PLANES DISPONIBLES:
+- Básico: $299 MXN/mes (1,000 mensajes)
+- Profesional: $799 MXN/mes (5,000 mensajes, integraciones CRM)
+- Empresarial: $1,999 MXN/mes (20,000 mensajes, API personalizada)
+
+HERRAMIENTAS:
+Usa "calculate_pricing" para calcular precios exactos según volumen.
+Usa "capture_lead" para guardar información de clientes interesados.
+
+IMPORTANTE:
+- Responde en español, sé breve y directo
+- Si preguntan sobre precios, usa la calculadora
+- Si muestran interés, guarda su información
+- Mantén tono profesional pero amigable',
+    'Hablas con tono cálido y profesional. Usas emojis ocasionalmente. Eres conciso - máximo 2-3 frases por respuesta.',
     0.7,
-    FALSE, -- RAG disabled for now
+    TRUE, -- RAG disabled for now
     TRUE
 );
 
 -- 5. Enable Integrations for this Bot
-INSERT INTO chatbot_integrations (chatbot_id, integration_id, is_enabled, settings_override) VALUES 
+INSERT INTO chatbot_integrations (chatbot_id, integration_id, is_enabled, settings_override) VALUES
+-- Enable Pricing Calculator
 (
     '22222222-2222-2222-2222-222222222222',
     '33333333-3333-3333-3333-333333333333',
     TRUE,
     '{}'
 ),
+-- Enable Lead Capture
 (
     '22222222-2222-2222-2222-222222222222',
     '33333333-3333-3333-3333-333333333334',
     TRUE,
-    '{"default_location": "San Francisco, CA"}'
+    '{}'
 );
 
 -- 6. Create Sample Contacts

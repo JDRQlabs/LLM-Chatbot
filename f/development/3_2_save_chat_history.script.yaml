@@ -21,6 +21,11 @@ schema:
       description: ''
       default: null
       properties: {}
+    send_result:
+      type: object
+      description: ''
+      default: null
+      properties: {}
     user_message:
       type: string
       description: ''
@@ -30,3 +35,4 @@ schema:
     - context_payload
     - user_message
     - llm_result
+    - send_result

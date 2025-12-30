@@ -44,74 +44,67 @@ value:
             expr: flow_input.message_body
         is_trigger: false
         path: f/development/2_whatsapp_llm_processing
-    - id: h
-      summary: ''
+    - id: step3
+      summary: Send reply to WhatsApp via Meta API
       value:
-        type: branchall
-        branches:
-          - modules:
-              - id: step3a
-                value:
-                  type: script
-                  input_transforms:
-                    context_payload:
-                      type: javascript
-                      expr: results.step1
-                    llm_result:
-                      type: javascript
-                      expr: results.step2
-                    phone_number_id:
-                      type: javascript
-                      expr: flow_input.phone_number_id
-                  is_trigger: false
-                  path: f/development/3_1_send_reply_to_whatsapp
-            expr: ''
-            parallel: true
-            skip_failure: false
-          - summary: ''
-            modules:
-              - id: step3b
-                value:
-                  type: script
-                  input_transforms:
-                    context_payload:
-                      type: javascript
-                      expr: results.step1
-                    db_resource:
-                      type: static
-                      value: f/development/business_layer_db_postgreSQL
-                    llm_result:
-                      type: javascript
-                      expr: results.step2
-                    user_message:
-                      type: javascript
-                      expr: flow_input.message_body
-                  is_trigger: false
-                  path: f/development/3_2_save_chat_history
-            expr: 'false'
-            parallel: true
-            skip_failure: false
-          - summary: Log usage for billing and analytics
-            modules:
-              - id: step3c
-                value:
-                  type: script
-                  input_transforms:
-                    context_payload:
-                      type: javascript
-                      expr: results.step1
-                    llm_result:
-                      type: javascript
-                      expr: results.step2
-                    db_resource:
-                      type: static
-                      value: f/development/business_layer_db_postgreSQL
-                  is_trigger: false
-                  path: f/development/3_3_log_usage
-            expr: 'false'
-            parallel: true
-            skip_failure: false
-        parallel: true
+        type: script
+        input_transforms:
+          context_payload:
+            type: javascript
+            expr: results.step1
+          llm_result:
+            type: javascript
+            expr: results.step2
+          phone_number_id:
+            type: javascript
+            expr: flow_input.phone_number_id
+        is_trigger: false
+        path: f/development/3_1_send_reply_to_whatsapp
+    - id: step4
+      summary: Save chat history to database
+      skip_if:
+        expr: '!results.step3.success'
+      value:
+        type: script
+        input_transforms:
+          context_payload:
+            type: javascript
+            expr: results.step1
+          db_resource:
+            type: static
+            value: f/development/business_layer_db_postgreSQL
+          llm_result:
+            type: javascript
+            expr: results.step2
+          user_message:
+            type: javascript
+            expr: flow_input.message_body
+          send_result:
+            type: javascript
+            expr: results.step3
+        is_trigger: false
+        path: f/development/3_2_save_chat_history
+    - id: step5
+      summary: Log usage for billing and analytics
+      skip_if:
+        expr: '!results.step3.success'
+      value:
+        type: script
+        input_transforms:
+          context_payload:
+            type: javascript
+            expr: results.step1
+          llm_result:
+            type: javascript
+            expr: results.step2
+          db_resource:
+            type: static
+            value: f/development/business_layer_db_postgreSQL
+          send_result:
+            type: javascript
+            expr: results.step3
+        is_trigger: false
+        path: f/development/3_3_log_usage
   failure_module:
     id: failure
     value:

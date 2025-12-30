@@ -48,6 +48,7 @@ class TestStep3aSendReply:
         result = step3a_main(
             phone_number_id="123456123",
             context_payload={
+                "proceed": True,
                 "chatbot": {"wa_token": "test_token"},
                 "user": {"phone": "16315551181"}
             },
@@ -70,6 +71,7 @@ class TestStep3aSendReply:
         result = step3a_main(
             phone_number_id="123456123",
             context_payload={
+                "proceed": True,
                 "chatbot": {"wa_token": "test_token"},
                 "user": {"phone": "16315551181"}
             },
@@ -95,6 +97,7 @@ class TestStep3aSendReply:
         result = step3a_main(
             phone_number_id="123456123",
             context_payload={
+                "proceed": True,
                 "chatbot": {"wa_token": "test_token"},
                 "user": {"phone": "invalid"}
             },
@@ -117,6 +120,7 @@ class TestStep3aSendReply:
         result = step3a_main(
             phone_number_id="123456123",
             context_payload={
+                "proceed": True,
                 "chatbot": {"wa_token": "test_token"},
                 "user": {"phone": "+16315551181"}  # Has + prefix
             },

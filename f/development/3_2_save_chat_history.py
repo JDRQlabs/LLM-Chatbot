@@ -8,10 +8,12 @@ def main(
     context_payload: dict,  # From Step 1 (contains User ID)
     user_message: str,  # Flow Input (The original message)
     llm_result: dict,  # From Step 2 (The AI reply)
+    send_result: dict,  # From Step 3 (Meta API response)
     db_resource: str = "f/development/business_layer_db_postgreSQL",
 ):
     """
     Step 4: Persist Conversation to DB
+    ONLY executes if Meta API successfully delivered the message
     """
 
     # Check if previous steps succeeded
@@ -24,6 +26,12 @@ def main(
         print(f"Step 2 failed: {llm_result.get('error', 'Unknown error')}")
         print("Skipping chat history save")
         return {"success": False, "error": "Cannot save history - Step 2 failed"}
+
+    # CRITICAL: Don't save to history if Meta API failed to deliver message
+    if not send_result.get("success", False):
+        print(f"Step 3 failed: {send_result.get('error', 'Meta API delivery failed')}")
+        print("Skipping chat history save - message was not delivered to user")
+        return {"success": False, "error": "Cannot save history - Step 3 failed (message not delivered)"}
 
     contact_id = context_payload["user"]["id"]
     ai_text = llm_result.get("reply_text")

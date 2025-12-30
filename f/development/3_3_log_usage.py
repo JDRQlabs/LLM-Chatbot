@@ -7,12 +7,14 @@ from typing import Dict, Any
 def main(
     context_payload: dict,  # From Step 1
     llm_result: dict,  # From Step 2
+    send_result: dict,  # From Step 3 (Meta API response)
     webhook_event_id: int = None,  # From flow input (if tracked)
     db_resource: str = "f/development/business_layer_db_postgreSQL",
 ) -> Dict[str, Any]:
     """
-    Step 3_3: Usage Logging
+    Step 5: Usage Logging
 
+    ONLY logs usage if Meta API successfully delivered the message.
     Tracks token usage and message counts for billing/analytics.
     Updates the usage_summary table for quick limit checks.
     """
@@ -27,6 +29,12 @@ def main(
         print(f"Step 2 failed: {llm_result.get('error', 'Unknown error')}")
         print("Skipping usage logging")
         return {"success": False, "error": "Cannot log usage - Step 2 failed"}
+
+    # CRITICAL: Don't charge users for messages that Meta failed to deliver
+    if not send_result.get("success", False):
+        print(f"Step 3 failed: {send_result.get('error', 'Meta API delivery failed')}")
+        print("Skipping usage logging - message was not delivered to user")
+        return {"success": False, "error": "Cannot log usage - Step 3 failed (message not delivered)"}
 
     # Extract data from previous steps
     org_id = context_payload["chatbot"]["organization_id"]
