@@ -53,7 +53,31 @@ def test_env_vars() -> Dict[str, str]:
         "OWNER_EMAIL": "test@example.com",
         "GOOGLE_API_KEY": "test_google_key",
         "OPENAI_API_KEY": "test_openai_key",
+        "WM_WORKSPACE": "test_workspace",
+        "WM_TOKEN": "test_windmill_token",
+        "WM_BASE_URL": "http://localhost:8000",
     }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_test_env_vars(test_env_vars):
+    """Automatically set environment variables for all tests."""
+    import os
+
+    # Store original values
+    original_values = {}
+    for key, value in test_env_vars.items():
+        original_values[key] = os.environ.get(key)
+        os.environ[key] = value
+
+    yield
+
+    # Restore original values
+    for key, original_value in original_values.items():
+        if original_value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original_value
 
 
 # ============================================================================
@@ -131,6 +155,23 @@ def db_with_data(clean_db, db_cursor):
     This is the most commonly used database fixture.
     """
     return db_cursor
+
+
+@pytest.fixture
+def db_with_autocommit(clean_db, db_connection):
+    """
+    Provides a database cursor with autocommit enabled.
+
+    Use this fixture for tests that call external scripts/processes
+    that create their own database connections, as they need to see
+    committed data (not just data in the current transaction).
+
+    WARNING: Changes made with this fixture are NOT automatically
+    rolled back, so clean_db is used to reset between tests.
+    """
+    cursor = db_connection.cursor(cursor_factory=RealDictCursor)
+    yield cursor
+    cursor.close()
 
 
 # ============================================================================

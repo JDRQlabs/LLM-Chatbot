@@ -88,6 +88,9 @@ def main(
         (org_id, max_pdfs, max_urls, max_daily_ingestions, max_storage,
          current_pdfs, current_urls, current_storage, today_ingestions) = row
 
+        # Convert Decimal types to float for arithmetic operations
+        current_storage = float(current_storage)
+
         # Check storage limit
         if current_storage + file_size_mb > max_storage:
             return {

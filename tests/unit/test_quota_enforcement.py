@@ -25,10 +25,10 @@ class TestQuotaEnforcement:
         """Mock Windmill resource for database connection."""
         return {
             "host": "localhost",
-            "port": 5432,
+            "port": 5434,  # Test database port
             "user": "test_user",
             "password": "test_password",
-            "dbname": "test_db"
+            "dbname": "test_business_logic"  # Test database name
         }
 
     @pytest.fixture
@@ -46,11 +46,11 @@ class TestQuotaEnforcement:
             "today_ingestions": 25
         }
 
-    def test_pdf_quota_available(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_pdf_quota_available(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test PDF upload allowed when under quota."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Insert test data
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_pdfs = %s,
                     current_knowledge_pdfs = %s,
@@ -82,11 +82,11 @@ class TestQuotaEnforcement:
             assert result["max"] == quota_data["max_pdfs"]
             assert result["remaining"] == quota_data["max_pdfs"] - quota_data["current_pdfs"]
 
-    def test_pdf_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_pdf_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test PDF upload blocked when quota exceeded."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Set current PDFs to max
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_pdfs = %s,
                     current_knowledge_pdfs = %s
@@ -112,11 +112,11 @@ class TestQuotaEnforcement:
             assert result["max"] == quota_data["max_pdfs"]
             assert result["remaining"] == 0
 
-    def test_url_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_url_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test URL ingestion blocked when quota exceeded."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Set current URLs to max
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_urls = %s,
                     current_knowledge_urls = %s
@@ -142,11 +142,11 @@ class TestQuotaEnforcement:
             assert result["max"] == quota_data["max_urls"]
             assert result["remaining"] == 0
 
-    def test_storage_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_storage_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test upload blocked when storage quota exceeded."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Storage almost at limit
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_storage_mb = %s,
                     current_storage_mb = %s
@@ -170,11 +170,11 @@ class TestQuotaEnforcement:
             assert result["quota_type"] == "STORAGE_LIMIT_EXCEEDED"
             assert result["max"] == quota_data["max_storage"]
 
-    def test_daily_ingestion_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_daily_ingestion_quota_exceeded(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test ingestion blocked when daily limit exceeded."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Add daily ingestion count at limit
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_ingestions_per_day = %s
                 WHERE id = %s
@@ -183,7 +183,7 @@ class TestQuotaEnforcement:
                 quota_data["org_id"]
             ))
 
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 INSERT INTO daily_ingestion_counts (organization_id, date, ingestion_count)
                 VALUES (%s, CURRENT_DATE, %s)
                 ON CONFLICT (organization_id, date)
@@ -224,14 +224,14 @@ class TestQuotaEnforcement:
             assert result["allowed"] is False
             assert result["quota_type"] == "CHATBOT_NOT_FOUND"
 
-    def test_remaining_calculation(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_remaining_calculation(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test correct calculation of remaining quota."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Set specific quota values
             current = 15
             maximum = 50
 
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_pdfs = %s,
                     current_knowledge_pdfs = %s
@@ -250,11 +250,11 @@ class TestQuotaEnforcement:
             assert result["allowed"] is True
             assert result["remaining"] == maximum - current  # Should be 35
 
-    def test_edge_case_exactly_at_storage_limit(self, mock_wmill_resource, quota_data, db_with_data):
+    def test_edge_case_exactly_at_storage_limit(self, mock_wmill_resource, quota_data, db_with_autocommit):
         """Test storage quota when exactly at limit (edge case)."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Storage at exactly max - 1MB
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_storage_mb = %s,
                     current_storage_mb = %s
@@ -284,12 +284,12 @@ class TestQuotaEnforcement:
             assert result["allowed"] is False
             assert result["quota_type"] == "STORAGE_LIMIT_EXCEEDED"
 
-    def test_different_plan_tiers(self, mock_wmill_resource, db_with_data):
+    def test_different_plan_tiers(self, mock_wmill_resource, db_with_autocommit):
         """Test that different organizations can have different quotas."""
         with patch('wmill.get_resource', return_value=mock_wmill_resource):
             # Setup: Create two chatbots with different org quotas
             # Org 1: Free tier (low limits)
-            db_with_data.execute("""
+            db_with_autocommit.execute("""
                 UPDATE organizations
                 SET max_knowledge_pdfs = 10,
                     current_knowledge_pdfs = 5,

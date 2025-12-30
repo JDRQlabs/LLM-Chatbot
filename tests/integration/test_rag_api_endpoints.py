@@ -242,12 +242,13 @@ class TestRAGAPIEndpoints:
 
         source_id = db_with_data.fetchone()["id"]
 
-        # Insert chunks
+        # Insert chunks (embedding must be 1536 dimensions for OpenAI ada-002)
+        test_embedding = "[" + ", ".join(["0.1"] * 1536) + "]"  # 1536-dimensional vector
         for i in range(5):
             db_with_data.execute("""
                 INSERT INTO document_chunks (knowledge_source_id, chunk_index, content, embedding)
                 VALUES (%s, %s, %s, %s)
-            """, (source_id, i, f"Chunk {i}", "[0.1, 0.2, 0.3]"))
+            """, (source_id, i, f"Chunk {i}", test_embedding))
 
         # Query with chunk count
         db_with_data.execute("""
