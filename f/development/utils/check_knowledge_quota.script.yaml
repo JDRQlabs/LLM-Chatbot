@@ -1,0 +1,30 @@
+summary: ''
+description: ''
+lock: '!inline f/development/utils/check_knowledge_quota.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    chatbot_id:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    db_resource:
+      type: string
+      description: ''
+      default: f/development/business_layer_db_postgreSQL
+      originalType: string
+    file_size_mb:
+      type: number
+      description: ''
+      default: 0
+    source_type:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+  required:
+    - chatbot_id
+    - source_type

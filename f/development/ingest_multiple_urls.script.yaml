@@ -1,0 +1,28 @@
+summary: ''
+description: ''
+lock: '!inline f/development/ingest_multiple_urls.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    chatbot_id:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    db_resource:
+      type: string
+      description: ''
+      default: f/development/business_layer_db_postgreSQL
+      originalType: string
+    urls:
+      type: array
+      description: ''
+      default: null
+      items:
+        type: string
+      originalType: 'string[]'
+  required:
+    - chatbot_id
+    - urls

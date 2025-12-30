@@ -1,0 +1,34 @@
+summary: ''
+description: ''
+lock: '!inline f/development/utils/web_crawler.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    base_url:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    filter_keywords:
+      type: array
+      description: ''
+      default: null
+      items:
+        type: string
+      originalType: 'string[]'
+    max_depth:
+      type: integer
+      description: ''
+      default: 2
+    max_pages:
+      type: integer
+      description: ''
+      default: 50
+    same_domain_only:
+      type: boolean
+      description: ''
+      default: true
+  required:
+    - base_url
