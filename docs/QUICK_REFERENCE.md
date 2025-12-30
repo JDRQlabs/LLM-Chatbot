@@ -205,7 +205,7 @@ OWNER_EMAIL=your_email
 # Webhook Server
 WEBHOOK_VERIFY_TOKEN=your_verify_token
 WINDMILL_TOKEN=your_windmill_api_token
-WINDMILL_MESSAGE_PROCESSING_ENDPOINT=http://windmill_server:8000/api/w/development/jobs/run/f/development/whatspp_webhook_processor
+WINDMILL_MESSAGE_PROCESSING_ENDPOINT=http://windmill_server:8000/api/w/development/jobs/run/f/development/whatsapp_webhook_processor
 ```
 
 ### Test Environment
@@ -277,7 +277,7 @@ Content-Type: application/json
 ### Windmill Flow
 ```bash
 # Direct trigger
-POST http://localhost:8081/api/w/development/jobs/run/f/development/whatspp_webhook_processor
+POST http://localhost:8081/api/w/development/jobs/run/f/development/whatsapp_webhook_processor
 Authorization: Bearer YOUR_TOKEN
 Content-Type: application/json
 

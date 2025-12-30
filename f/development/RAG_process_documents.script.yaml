@@ -1,0 +1,39 @@
+summary: ''
+description: ''
+lock: '!inline f/development/RAG_process_documents.script.lock'
+kind: script
+schema:
+  $schema: 'https://json-schema.org/draft/2020-12/schema'
+  type: object
+  properties:
+    chatbot_id:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    chunk_overlap:
+      type: integer
+      description: ''
+      default: 200
+    chunk_size:
+      type: integer
+      description: ''
+      default: 1000
+    db_resource:
+      type: string
+      description: ''
+      default: f/development/business_layer_db_postgreSQL
+      originalType: string
+    knowledge_source_id:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    openai_api_key:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+  required:
+    - knowledge_source_id
+    - chatbot_id

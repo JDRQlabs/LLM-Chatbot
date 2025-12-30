@@ -13,6 +13,11 @@ schema:
       description: ''
       default: null
       properties: {}
+    db_resource:
+      type: string
+      description: ''
+      default: f/development/business_layer_db_postgreSQL
+      originalType: string
     default_provider:
       type: string
       description: ''

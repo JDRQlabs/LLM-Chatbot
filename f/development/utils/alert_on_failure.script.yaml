@@ -1,37 +1,46 @@
-summary: 1 Whatsapp context loading
-description: Step 1 in whatsapp webhook flow - extract context from business database
-lock: '!inline f/development/1_whatsapp_context_loading.script.lock'
+summary: ''
+description: ''
+lock: '!inline f/development/utils/alert_on_failure.script.lock'
 kind: script
 schema:
   $schema: 'https://json-schema.org/draft/2020-12/schema'
   type: object
   properties:
+    chatbot_id:
+      type: string
+      description: ''
+      default: null
+      originalType: string
     db_resource:
       type: string
       description: ''
       default: f/development/business_layer_db_postgreSQL
       originalType: string
-    message_id:
+    error_message:
       type: string
       description: ''
       default: null
       originalType: string
-    user_name:
+    error_name:
       type: string
       description: ''
-      default: Unknown
+      default: null
+      originalType: string
+    slack_webhook_url:
+      type: string
+      description: ''
+      default: <function call>
+      originalType: string
+    step_id:
+      type: string
+      description: ''
+      default: null
       originalType: string
     user_phone:
       type: string
       description: ''
       default: null
       originalType: string
-    whatsapp_phone_id:
-      type: string
-      description: ''
-      default: null
-      originalType: string
   required:
-    - whatsapp_phone_id
-    - user_phone
-    - message_id
+    - error_message
+    - step_id
