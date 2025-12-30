@@ -18,7 +18,7 @@ def main(
 ):
     """
     Step 2: AI Reasoning with RAG (The Brain)
-    
+
     Flow:
     1. Check if RAG is enabled for this chatbot
     2. If RAG enabled: Retrieve relevant context from knowledge base
@@ -26,6 +26,16 @@ def main(
     4. Call LLM
     5. Return response with usage info
     """
+
+    # Check if Step 1 succeeded
+    if not context_payload.get("proceed", False):
+        error_reason = context_payload.get("reason", "Unknown error in Step 1")
+        print(f"Step 1 failed: {error_reason}")
+        return {
+            "error": error_reason,
+            "reply_text": "Sorry, I'm unable to process your message at this time. Please try again later.",
+            "should_notify_admin": context_payload.get("notify_admin", False)
+        }
 
     # Unpack context
     chatbot = context_payload["chatbot"]
