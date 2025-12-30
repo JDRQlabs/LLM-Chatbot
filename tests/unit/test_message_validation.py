@@ -209,12 +209,12 @@ class TestMessageSizeValidation:
     def test_attack_scenario_copy_paste_spam(self, message_limits):
         """Test protection against copy-paste spam attacks."""
         # Attacker copies a long text to exploit LLM costs
-        spam_message = "SPAM " * 10000  # 60k chars
+        spam_message = "SPAM " * 10000  # 50k chars (5 chars * 10000)
 
         # Free tier should block
         result = self.validate_message_size(spam_message, "free", message_limits)
         assert result["allowed"] is False
-        assert result["current_length"] == 60000
+        assert result["current_length"] == 50000
 
         # Pro tier should also block
         result = self.validate_message_size(spam_message, "pro", message_limits)
