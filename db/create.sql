@@ -281,7 +281,7 @@ CREATE TABLE usage_logs (
     -- Timestamps & Bucketing
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     date_bucket DATE DEFAULT CURRENT_DATE -- For easy daily aggregation
-);}
+);
 
 
 -- Enable pgvector extension
@@ -464,7 +464,8 @@ EXECUTE FUNCTION increment_knowledge_counters();
 
 CREATE INDEX idx_usage_logs_org_date ON usage_logs(organization_id, date_bucket);
 CREATE INDEX idx_usage_logs_chatbot_date ON usage_logs(chatbot_id, date_bucket);
-CREATE INDEX idx_usage_logs_org_period ON usage_logs(organization_id, created_at) WHERE created_at >= CURRENT_DATE - INTERVAL '31 days';
+-- Index for recent usage queries (removed WHERE clause due to IMMUTABLE requirement)
+CREATE INDEX idx_usage_logs_org_period ON usage_logs(organization_id, created_at);
 
 -- 11. USAGE SUMMARY (Cached Aggregates for Performance)
 -- This is a materialized view alternative - stores current billing period usage

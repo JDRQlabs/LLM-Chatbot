@@ -208,7 +208,7 @@ class TestRAGAPIEndpoints:
         """Test listing knowledge sources for a chatbot."""
         # Setup: Insert test knowledge sources
         db_with_data.execute("""
-            INSERT INTO knowledge_sources (chatbot_id, source_type, source_name, source_url, status)
+            INSERT INTO knowledge_sources (chatbot_id, source_type, name, file_path, sync_status)
             VALUES
                 (%s, 'pdf', 'Product Manual', NULL, 'synced'),
                 (%s, 'url', 'FAQ Page', 'https://example.com/faq', 'synced'),
@@ -218,7 +218,7 @@ class TestRAGAPIEndpoints:
 
         # Query sources
         db_with_data.execute("""
-            SELECT id, source_type, source_name, source_url, status, created_at
+            SELECT id, source_type, name, file_path, sync_status as status, created_at
             FROM knowledge_sources
             WHERE chatbot_id = %s
             ORDER BY created_at DESC
@@ -235,7 +235,7 @@ class TestRAGAPIEndpoints:
         """Test that source list includes document chunk count."""
         # Setup: Insert knowledge source with chunks
         db_with_data.execute("""
-            INSERT INTO knowledge_sources (chatbot_id, source_type, source_name, status)
+            INSERT INTO knowledge_sources (chatbot_id, source_type, name, sync_status)
             VALUES (%s, 'pdf', 'Test PDF', 'synced')
             RETURNING id
         """, (chatbot_id,))
@@ -253,7 +253,7 @@ class TestRAGAPIEndpoints:
         db_with_data.execute("""
             SELECT
                 ks.id,
-                ks.source_name,
+                ks.name,
                 COUNT(dc.id) as chunk_count
             FROM knowledge_sources ks
             LEFT JOIN document_chunks dc ON dc.knowledge_source_id = ks.id
@@ -272,7 +272,7 @@ class TestRAGAPIEndpoints:
         """Test getting processing status of a specific knowledge source."""
         # Setup: Insert source with status
         db_with_data.execute("""
-            INSERT INTO knowledge_sources (chatbot_id, source_type, source_name, status, error_message)
+            INSERT INTO knowledge_sources (chatbot_id, source_type, name, sync_status, error_message)
             VALUES (%s, 'pdf', 'Processing Doc', 'processing', NULL)
             RETURNING id
         """, (chatbot_id,))
@@ -281,7 +281,7 @@ class TestRAGAPIEndpoints:
 
         # Query status
         db_with_data.execute("""
-            SELECT id, source_name, status, error_message, created_at, updated_at
+            SELECT id, name, sync_status as status, error_message, created_at, updated_at
             FROM knowledge_sources
             WHERE id = %s
         """, (source_id,))
@@ -293,7 +293,7 @@ class TestRAGAPIEndpoints:
             "success": True,
             "source": {
                 "id": str(result["id"]),
-                "name": result["source_name"],
+                "name": result["name"],
                 "status": result["status"],
                 "error_message": result["error_message"],
                 "created_at": result["created_at"].isoformat(),
@@ -312,7 +312,7 @@ class TestRAGAPIEndpoints:
         """Test deleting a knowledge source."""
         # Setup: Insert source
         db_with_data.execute("""
-            INSERT INTO knowledge_sources (chatbot_id, source_type, source_name, status)
+            INSERT INTO knowledge_sources (chatbot_id, source_type, name, sync_status)
             VALUES (%s, 'pdf', 'To Delete', 'synced')
             RETURNING id
         """, (chatbot_id,))
@@ -402,7 +402,7 @@ class TestRAGAPIEndpoints:
         # Verify result structure
         result = expected_response["results"][0]
         assert "content" in result
-        assert "source_name" in result
+        assert "source_name" in result  # API response uses source_name (different from DB column 'name')
         assert "similarity_score" in result
         assert 0 <= result["similarity_score"] <= 1
 
