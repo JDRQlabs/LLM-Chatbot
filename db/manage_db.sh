@@ -141,6 +141,44 @@ run_sql() {
   fi
 }
 
+# Apply database migrations
+run_migrations() {
+  local migrations_dir="migrations"
+
+  info "Applying database migrations..."
+
+  # Check if migrations directory exists
+  if [ ! -d "$migrations_dir" ]; then
+    error "Migrations directory not found: $migrations_dir"
+    return 1
+  fi
+
+  # Get list of migration files in sorted order
+  local migration_files=$(ls "$migrations_dir"/*.sql 2>/dev/null | sort)
+
+  if [ -z "$migration_files" ]; then
+    info "No migration files found in $migrations_dir/"
+    return 0
+  fi
+
+  # Apply each migration file
+  local migration_count=0
+  for migration_file in $migration_files; do
+    local migration_name=$(basename "$migration_file")
+    info "  Applying migration: $migration_name"
+
+    if ! run_sql "$migration_file"; then
+      error "Migration failed: $migration_name"
+      return 1
+    fi
+
+    migration_count=$((migration_count + 1))
+  done
+
+  success "Applied $migration_count migration(s)"
+  return 0
+}
+
 # Validate required environment variables for seed.sql
 validate_seed_vars() {
   if [ -z "$WHATSAPP_PHONE_NUMBER_ID" ] || [ -z "$WHATSAPP_ACCESS_TOKEN" ]; then
@@ -255,12 +293,17 @@ case "$1" in
   
   "create")
     check_container
-    if run_sql "create.sql"; then
-      success "Schema created successfully in database '$DB_NAME'"
-    else
+    if ! run_sql "create.sql"; then
       error "Failed to create schema"
       exit 1
     fi
+
+    if ! run_migrations; then
+      error "Failed to apply migrations"
+      exit 1
+    fi
+
+    success "Schema and migrations applied successfully in database '$DB_NAME'"
     ;;
   
   "seed")
@@ -277,23 +320,28 @@ case "$1" in
   "reset")
     check_container
     validate_seed_vars
-    info "Resetting database '$DB_NAME' (drop -> create -> seed)..."
-    
+    info "Resetting database '$DB_NAME' (drop -> create -> migrations -> seed)..."
+
     if ! run_sql "drop.sql"; then
       error "Failed to drop database. Aborting reset."
       exit 1
     fi
-    
+
     if ! run_sql "create.sql"; then
       error "Failed to create schema. Aborting reset."
       exit 1
     fi
-    
+
+    if ! run_migrations; then
+      error "Failed to apply migrations. Aborting reset."
+      exit 1
+    fi
+
     if ! run_sql "seed.sql"; then
       error "Failed to insert seed data. Aborting reset."
       exit 1
     fi
-    
+
     success "Database reset complete!"
     ;;
   
