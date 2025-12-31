@@ -391,16 +391,19 @@ graph TD
 
 #### Database Backup Strategy
 - [ ] Set up Hetzner Object Storage bucket (or Storage Box) for backups
-- [ ] Create backup script (`scripts/backup_db.sh`):
-  ```bash
-  #!/bin/bash
-  pg_dump -h localhost -U postgres -d whatsapp_chatbot | \
-    gzip > /tmp/backup_$(date +%Y%m%d_%H%M%S).sql.gz
-  # Upload to Hetzner Object Storage
-  ```
+- [x] Create backup script (`deployment/scripts/backup_db.sh`):
+  - [x] pg_dump with gzip compression
+  - [x] SHA256 checksums for integrity verification
+  - [x] Optional S3 upload for remote storage
+  - [x] Automatic cleanup of old backups (configurable retention)
+  - [x] Slack notifications for success/failure
+- [x] Create restore script (`deployment/scripts/restore_db.sh`):
+  - [x] Checksum verification before restore
+  - [x] Support for --list and --latest options
+  - [x] Safety confirmation prompt
 - [ ] Add cron job for nightly backups (2 AM UTC)
 - [ ] Test backup restoration process
-- [ ] Document backup retention policy (7 days? 30 days?)
+- [x] Document backup retention policy (7 days default, configurable via RETENTION_DAYS)
 
 #### Monitoring Setup
 - [ ] Install `node_exporter` on VM for Prometheus metrics
