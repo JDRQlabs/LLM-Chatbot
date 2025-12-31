@@ -281,7 +281,7 @@ graph TD
 - [x] Set JWT secret in environment variable (`JWT_SECRET`)
 - [x] Configure JWT expiration (24 hours recommended)
 - [ ] Implement token refresh mechanism (optional for MVP)
-- [ ] Add rate limiting to auth endpoints (prevent brute force)
+- [x] Add rate limiting to auth endpoints (prevent brute force)
 
 **CORS Configuration:**
 - [x] Install `cors` middleware
@@ -350,7 +350,11 @@ graph TD
   - [x] `/webhook*` → `webhook-ingress` container (port 3000)
   - [x] `/windmill*` → `windmill_server` container (port 8000)
 - [x] Set up SSL certificates (Let's Encrypt via Caddy, or manual certs)
-- [ ] Configure rate limiting at proxy level
+- [x] Configure rate limiting at application level (express-rate-limit)
+  - [x] Auth endpoints: 5 requests per 15 minutes
+  - [x] General API: 100 requests per minute
+  - [x] Knowledge uploads: 10 uploads per hour
+  - [x] Webhooks: 1000 requests per minute
 - [x] Add security headers (HSTS, X-Frame-Options, etc.)
 - [ ] Test routing and SSL
 

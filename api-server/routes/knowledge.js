@@ -15,6 +15,7 @@ const { Pool } = require('pg');
 const fetch = require('node-fetch');
 const { checkQuota } = require('../middleware/quota');
 const { verifyToken, pool: authPool } = require('../middleware/auth');
+const { uploadLimiter, apiLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -107,7 +108,7 @@ async function callWindmillScript(scriptPath, args) {
  * 1. POST /api/chatbots/:id/knowledge/upload
  * Upload PDF or DOCX file
  */
-router.post('/:id/knowledge/upload', verifyToken, verifyChatbotOwnership, upload.single('file'), async (req, res, next) => {
+router.post('/:id/knowledge/upload', verifyToken, uploadLimiter, verifyChatbotOwnership, upload.single('file'), async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const file = req.file;
@@ -150,7 +151,7 @@ router.post('/:id/knowledge/upload', verifyToken, verifyChatbotOwnership, upload
  * 2. POST /api/chatbots/:id/knowledge/url
  * Add single URL to knowledge base
  */
-router.post('/:id/knowledge/url', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
+router.post('/:id/knowledge/url', verifyToken, uploadLimiter, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { url } = req.body;
@@ -196,7 +197,7 @@ router.post('/:id/knowledge/url', verifyToken, verifyChatbotOwnership, async (re
  * 3. POST /api/chatbots/:id/knowledge/crawl
  * Discover links from base URL
  */
-router.post('/:id/knowledge/crawl', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
+router.post('/:id/knowledge/crawl', verifyToken, uploadLimiter, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { baseUrl, maxDepth = 2, maxPages = 50, filterKeywords } = req.body;
@@ -227,7 +228,7 @@ router.post('/:id/knowledge/crawl', verifyToken, verifyChatbotOwnership, async (
  * 4. POST /api/chatbots/:id/knowledge/ingest-batch
  * Ingest multiple URLs in batch
  */
-router.post('/:id/knowledge/ingest-batch', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
+router.post('/:id/knowledge/ingest-batch', verifyToken, uploadLimiter, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { urls } = req.body;

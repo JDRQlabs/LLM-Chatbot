@@ -2,12 +2,14 @@
  * Authentication Routes
  *
  * Provides user registration, login, and profile endpoints.
+ * Rate limited to prevent brute force attacks.
  */
 
 const express = require('express');
 const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
 const { generateToken, verifyToken, pool } = require('../middleware/auth');
+const { authLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -22,6 +24,8 @@ const SALT_ROUNDS = 12;
  * Returns: { token, user, organization }
  */
 router.post('/register',
+  // Rate limiting
+  authLimiter,
   // Validation
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
@@ -132,6 +136,8 @@ router.post('/register',
  * Returns: { token, user, organization }
  */
 router.post('/login',
+  // Rate limiting
+  authLimiter,
   // Validation
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required'),

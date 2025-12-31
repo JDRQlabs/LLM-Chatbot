@@ -120,7 +120,18 @@
 # }
 
 # =============================================================================
-# Rate limiting (applied globally)
+# Rate limiting
 # =============================================================================
-# Note: Caddy 2 doesn't have built-in rate limiting.
-# Consider using caddy-ratelimit plugin or handle at application level.
+# Note: Rate limiting is implemented at the application level using
+# express-rate-limit in api-server/middleware/rateLimit.js
+#
+# Current limits:
+# - Auth endpoints (login/register): 5 requests per 15 minutes
+# - General API: 100 requests per minute per user
+# - Knowledge uploads: 10 uploads per hour per organization
+# - Webhooks: 1000 requests per minute (for WhatsApp)
+#
+# For additional proxy-level rate limiting, consider:
+# 1. Building custom Caddy with caddy-rate-limit plugin
+# 2. Using Hetzner Load Balancer with rate limits (Phase 1)
+# 3. Adding nginx in front of Caddy for advanced features
