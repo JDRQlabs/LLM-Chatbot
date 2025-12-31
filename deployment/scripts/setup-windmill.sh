@@ -1,7 +1,34 @@
 #!/bin/bash
 # setup-windmill.sh
-# Automates Windmill workspace creation, token generation, and flow sync
-# Run this after Windmill is healthy on a fresh deployment
+# ==============================================================================
+# WINDMILL SERVER SETUP SCRIPT
+# ==============================================================================
+#
+# This script sets up the Windmill SERVER (not workers). It:
+#   1. Creates a workspace for your flows
+#   2. Generates an API token for webhook-ingress to trigger flows
+#   3. Syncs all scripts/flows from the local f/ directory
+#   4. Updates .env with the generated credentials
+#
+# ARCHITECTURE NOTE (Phase 1 Scaling):
+# ------------------------------------
+# Windmill has two components:
+#   - SERVER (windmill_server): Lightweight API/UI, job coordination, queue management
+#   - WORKERS (windmill_worker): Heavy compute, executes Python/JS scripts
+#
+# For autoscaling:
+#   - Run ONE server for coordination (this script sets it up)
+#   - Scale WORKERS horizontally - they share the PostgreSQL job queue
+#   - Workers can run on same VM or different VMs
+#   - All workers connect to the same database
+#
+# Example Phase 1 architecture:
+#   VM1: windmill_server + windmill_worker (primary)
+#   VM2: windmill_worker only (connects to VM1's database)
+#   VM3: windmill_worker only (connects to VM1's database)
+#
+# Run this after Windmill is healthy on a fresh deployment.
+# ==============================================================================
 
 set -e
 
@@ -12,6 +39,7 @@ WINDMILL_PASSWORD="${WINDMILL_PASSWORD:-changeme}"
 WORKSPACE_NAME="${WORKSPACE_NAME:-production}"
 WORKSPACE_ID="${WORKSPACE_ID:-production}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-$(dirname "$0")/../../}"  # Parent of deployment/scripts
+ENV_FILE="${ENV_FILE:-$SCRIPTS_DIR/.env}"
 MAX_RETRIES=30
 RETRY_INTERVAL=5
 
@@ -118,8 +146,43 @@ sync_scripts() {
 # Function to get the flow webhook endpoint
 get_flow_endpoint() {
     local flow_path="f/$WORKSPACE_ID/whatsapp_webhook_processor__flow"
-    FLOW_ENDPOINT="$WINDMILL_URL/api/w/$WORKSPACE_ID/jobs/run/f/development/whatsapp_webhook_processor__flow"
+    # Use Docker internal hostname for container-to-container communication
+    FLOW_ENDPOINT="http://windmill_server:8000/api/w/$WORKSPACE_ID/jobs/run/f/development/whatsapp_webhook_processor__flow"
     echo "Flow endpoint: $FLOW_ENDPOINT"
+}
+
+# Function to update .env file with generated credentials
+update_env_file() {
+    echo "Updating .env file..."
+
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "WARNING: .env file not found at $ENV_FILE"
+        echo "You'll need to manually add the credentials."
+        return 1
+    fi
+
+    # Backup existing .env
+    cp "$ENV_FILE" "$ENV_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+
+    # Update or add WINDMILL_TOKEN
+    if grep -q "^WINDMILL_TOKEN=" "$ENV_FILE"; then
+        sed -i "s|^WINDMILL_TOKEN=.*|WINDMILL_TOKEN=$API_TOKEN|" "$ENV_FILE"
+        echo "  Updated WINDMILL_TOKEN"
+    else
+        echo "WINDMILL_TOKEN=$API_TOKEN" >> "$ENV_FILE"
+        echo "  Added WINDMILL_TOKEN"
+    fi
+
+    # Update or add WINDMILL_MESSAGE_PROCESSING_ENDPOINT
+    if grep -q "^WINDMILL_MESSAGE_PROCESSING_ENDPOINT=" "$ENV_FILE"; then
+        sed -i "s|^WINDMILL_MESSAGE_PROCESSING_ENDPOINT=.*|WINDMILL_MESSAGE_PROCESSING_ENDPOINT=$FLOW_ENDPOINT|" "$ENV_FILE"
+        echo "  Updated WINDMILL_MESSAGE_PROCESSING_ENDPOINT"
+    else
+        echo "WINDMILL_MESSAGE_PROCESSING_ENDPOINT=$FLOW_ENDPOINT" >> "$ENV_FILE"
+        echo "  Added WINDMILL_MESSAGE_PROCESSING_ENDPOINT"
+    fi
+
+    echo ".env file updated successfully"
 }
 
 # Main execution
@@ -148,18 +211,18 @@ echo "Step 6: Get Flow Endpoint"
 get_flow_endpoint
 
 echo ""
+echo "Step 7: Update .env File"
+update_env_file
+
+echo ""
 echo "=========================================="
-echo "Windmill Setup Complete!"
+echo "Windmill Server Setup Complete!"
 echo "=========================================="
 echo ""
-echo "Add these to your .env file:"
+echo "Generated credentials:"
+echo "  WINDMILL_TOKEN=$API_TOKEN"
+echo "  WINDMILL_MESSAGE_PROCESSING_ENDPOINT=$FLOW_ENDPOINT"
 echo ""
-echo "WINDMILL_TOKEN=$API_TOKEN"
-echo "WINDMILL_MESSAGE_PROCESSING_ENDPOINT=$FLOW_ENDPOINT"
-echo ""
-echo "Or run this to append them:"
-echo "cat >> .env << EOF"
-echo "WINDMILL_TOKEN=$API_TOKEN"
-echo "WINDMILL_MESSAGE_PROCESSING_ENDPOINT=$FLOW_ENDPOINT"
-echo "EOF"
+echo "IMPORTANT: Restart webhook-ingress to pick up new credentials:"
+echo "  docker compose -f docker-compose.phase0.yml restart webhook-ingress"
 echo ""

@@ -447,8 +447,8 @@ graph TD
 
 ## Phase 1: Production HA (Scale Trigger)
 
-**Target**: 500-2000 users, ~500-2000 messages/minute  
-**Cost**: ~€90/month  
+**Target**: 500-2000 users, ~500-2000 messages/minute
+**Cost**: ~€90/month
 **When to Scale**: See "Scaling Decision Tree" below
 
 ### Infrastructure
@@ -469,6 +469,52 @@ graph TD
 - **Separate compute tier**: Windmill Core (server) + dedicated Worker nodes
 - **Managed database**: Migrate from self-hosted to managed Postgres
 - **Managed Redis**: For shared rate limiting across API nodes
+
+### Windmill Scaling Architecture
+
+Windmill has a clear separation between **Server** and **Workers**:
+
+| Component | Role | Resources | Scaling Strategy |
+|-----------|------|-----------|------------------|
+| `windmill_server` | API, UI, job coordination, queue management | Light (512MB RAM) | Single instance (HA optional) |
+| `windmill_worker` | Job execution (Python/JS scripts, LLM calls) | Heavy (2GB+ RAM) | Horizontal scaling |
+
+**How Windmill Job Queue Works:**
+1. `windmill_server` receives job requests and writes to PostgreSQL queue
+2. `windmill_worker` instances poll the queue and execute jobs
+3. Multiple workers share the same queue - jobs are distributed automatically
+4. Workers can run on the same VM or different VMs
+
+**Phase 1 Deployment Pattern:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Managed PostgreSQL                          │
+│            (shared job queue + business data)                │
+└─────────────────────────────────────────────────────────────┘
+                              ▲
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+┌─────────┴─────────┐  ┌─────┴─────┐  ┌─────────┴─────────┐
+│   VM1 (Primary)   │  │    VM2    │  │       VM3         │
+│ ─────────────────  │  │ ─────────  │  │ ─────────────────  │
+│ windmill_server   │  │ windmill_ │  │ windmill_worker   │
+│ windmill_worker   │  │ worker    │  │ (autoscale group) │
+│ webhook-ingress   │  │           │  │                   │
+│ api-server        │  │           │  │                   │
+│ caddy             │  │           │  │                   │
+└───────────────────┘  └───────────┘  └───────────────────┘
+```
+
+**Key Points:**
+- Only ONE `windmill_server` is needed for coordination
+- Workers scale horizontally by adding more containers/VMs
+- All workers connect to the same PostgreSQL database
+- Use `docker-compose.worker.yml` for worker-only VMs (Phase 1)
+- Workers auto-discover jobs via database polling
+
+**Setup Scripts:**
+- `setup-windmill.sh` - Sets up the Windmill SERVER (workspace, token, flows)
+- Worker VMs only need: PostgreSQL connection string + Docker with worker image
 
 ### Implementation Checklist
 
