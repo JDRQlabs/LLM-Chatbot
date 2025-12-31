@@ -62,6 +62,17 @@ pytest -k "idempotency"
 pytest -k "usage_limits"
 ```
 
+Refer to pytest.ini:
+markers =
+    unit: Unit tests that test individual functions in isolation
+    integration: Integration tests that test multiple components together
+    slow: Tests that take a long time to run
+    db: Tests that require database access
+    external: Tests that make real external API calls (should be rarely used)
+    live_llm: Tests that make real LLM API calls (OpenAI, Gemini). Run with -m live_llm
+    live_embeddings: Tests that generate real embeddings via OpenAI. Run with -m live_embeddings
+    live: All live tests that use real external APIs. Run with -m live
+
 ### Coverage
 ```bash
 pytest --cov=f/development --cov-report=html
@@ -104,8 +115,7 @@ docker-compose -f docker-compose.test.yml up -d
 docker exec -it test_business_logic_db psql -U test_user -d test_business_logic
 
 # Reset test DB
-docker-compose -f docker-compose.test.yml down -v
-docker-compose -f docker-compose.test.yml up -d
+use ./db/manage_db.sh --test reset
 ```
 
 ## Windmill Flows

@@ -82,7 +82,7 @@ src/
 ### Prerequisites
 - Docker & Docker Compose
 - Node.js 18+ (for webhook server)
-- PostgreSQL 15+ with pgvector extension
+- PostgreSQL 16+ with pgvector extension
 - OpenAI API key (for embeddings)
 - Google Gemini API key (for LLM)
 - WhatsApp Business Account & Meta App
@@ -97,25 +97,7 @@ cp .env.example .env
 nano .env
 ```
 
-Required environment variables:
-```env
-# Windmill
-BASE_URL=http://localhost:8081
-
-# Database
-DATABASE_URL=postgresql://postgres:password@postgres:5432/windmill
-
-# WhatsApp
-WHATSAPP_VERIFY_TOKEN=your-webhook-verify-token
-WHATSAPP_ACCESS_TOKEN=your-whatsapp-access-token
-WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id
-
-# LLM Providers
-OPENAI_API_KEY=sk-...
-GOOGLE_API_KEY=AI...
-
-# Monitoring (optional)
-SLACK_ALERT_WEBHOOK=https://hooks.slack.com/services/...
+Required environment variables: refer to .env.example
 ```
 
 ### 2. Start Services
@@ -131,18 +113,26 @@ docker-compose logs -f
 # Webhook server at http://localhost:3000
 ```
 
-### 3. Initialize Database
+### 3. Initialize Database (FOR DEVELOPMENT ONLY)
 
+For any database operations in development, use /db/manage_db.sh, refer to this extract from the script:
 ```bash
-# Run database setup
-docker-compose exec postgres psql -U postgres -d windmill -f /docker-entrypoint-initdb.d/create.sql
-
-# Run migrations
-docker-compose exec postgres psql -U postgres -d windmill -f /docker-entrypoint-initdb.d/migrations/001_add_tool_tables.sql
-docker-compose exec postgres psql -U postgres -d windmill -f /docker-entrypoint-initdb.d/migrations/002_add_usage_triggers.sql
-
-# Seed sample data (optional)
-docker-compose exec postgres psql -U postgres -d windmill -f /docker-entrypoint-initdb.d/seed.sql
+    echo "Usage: db/manage_db.sh [OPTIONS] <COMMAND>"
+    echo ""
+    echo "Options:"
+    echo "  --test  - Target the test database (test_business_logic_db)"
+    echo "  --dev   - Target the dev database (business_logic_db) [default]"
+    echo ""
+    echo "Commands:"
+    echo "  create  - Create database schema"
+    echo "  seed    - Insert seed data (requires WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN in .env for dev DB)"
+    echo "  drop    - Drop all tables (with confirmation)"
+    echo "  reset   - Drop, create, and seed database (full reset)"
+    echo "  verify  - Show all tables, their structure, and sample data"
+    echo ""
+    echo "Examples:"
+    echo "  ./manage_db.sh reset             # Reset dev database"
+    echo "  ./manage_db.sh --test reset      # Reset test database"
 ```
 
 ### 4. Configure WhatsApp Webhook
