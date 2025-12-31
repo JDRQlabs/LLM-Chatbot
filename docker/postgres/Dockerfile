@@ -1,5 +1,5 @@
 # PostgreSQL 16 with pgvector extension
-# Used for FastBots.ai business logic database with vector similarity search
+# Used for business logic database with vector similarity search
 
 FROM postgres:16
 

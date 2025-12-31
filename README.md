@@ -1,4 +1,4 @@
-# FastBots.ai Clone - Multi-Tenant WhatsApp Chatbot Platform
+# Multi-Tenant WhatsApp Chatbot Platform
 
 A production-ready, multi-tenant SaaS platform for WhatsApp chatbots with RAG (Retrieval-Augmented Generation), agentic tool calling, and comprehensive monitoring.
 
@@ -55,8 +55,8 @@ src/
 │   ├── 1_whatsapp_context_loading.py    # Step 1: Load context
 │   ├── 2_whatsapp_llm_processing.py     # Step 2: Agent loop + RAG
 │   ├── 3_1_send_reply_to_whatsapp.py    # Step 3a: Send reply
-│   ├── 3_2_save_chat_history.py         # Step 3b: Save history
-│   ├── 3_3_log_usage.py                 # Step 3c: Log usage
+│   ├── 4__save_chat_history.py         # Step 3b: Save history
+│   ├── 5__log_usage.py                 # Step 3c: Log usage
 │   ├── RAG_process_documents.py         # Document processing
 │   ├── upload_document.py               # Document upload flow
 │   ├── whatsapp_webhook_processor__flow/

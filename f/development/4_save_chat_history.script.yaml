@@ -1,6 +1,6 @@
-summary: 3_2_save chat history
+summary: 4__save chat history
 description: ''
-lock: '!inline f/development/3_2_save_chat_history.script.lock'
+lock: '!inline f/development/4_save_chat_history.script.lock'
 kind: script
 schema:
   $schema: 'https://json-schema.org/draft/2020-12/schema'

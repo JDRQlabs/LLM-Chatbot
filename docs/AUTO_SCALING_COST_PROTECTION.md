@@ -119,8 +119,8 @@ function isDDOSAttack() {
 brew install hcloud  # or apt-get install hcloud
 
 # Authenticate
-hcloud context create fastbots
-hcloud context use fastbots
+hcloud context create whatsapp_chatbot
+hcloud context use whatsapp_chatbot
 
 # Set token (from Hetzner Console → API Tokens)
 export HCLOUD_TOKEN=your_token_here
@@ -331,8 +331,8 @@ packages:
 
 runcmd:
   # Clone application repository
-  - git clone https://github.com/your-org/fastbots.git /opt/fastbots
-  - cd /opt/fastbots
+  - git clone https://github.com/your-org/whatsapp_chatbot.git /opt/whatsapp_chatbot
+  - cd /opt/whatsapp_chatbot
 
   # Setup environment
   - cp .env.example .env
@@ -340,7 +340,7 @@ runcmd:
   - echo "REDIS_HOST=managed-redis.hetzner.cloud" >> .env
 
   # Start application
-  - docker-compose up -d fastbots_api
+  - docker-compose up -d whatsapp_chatbot_api
 
   # Register with load balancer (if exists)
   - curl -X POST http://load-balancer:9000/register \

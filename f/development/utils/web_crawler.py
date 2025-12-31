@@ -119,7 +119,7 @@ def main(
 
             response = requests.get(
                 current_url,
-                headers={'User-Agent': 'FastBots.ai Knowledge Crawler/1.0'},
+                headers={'User-Agent': 'Knowledge Crawler/1.0'},
                 timeout=10,
                 allow_redirects=True
             )

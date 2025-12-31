@@ -1,5 +1,5 @@
 /**
- * FastBots.ai Knowledge Base API Server
+ * Chatbot Knowledge Base API Server
  *
  * Provides REST API for managing chatbot knowledge bases:
  * - File uploads (PDF, DOCX)
@@ -32,7 +32,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    service: 'fastbots-api-server',
+    service: 'whatsapp-chatbot-server',
     version: '1.0.0'
   });
 });
@@ -64,7 +64,7 @@ app.use((req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`FastBots API Server running on port ${PORT}`);
+  console.log(`Whatsapp Chatbot API Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Database host: ${process.env.DB_HOST || 'localhost'}`);
   console.log(`Windmill URL: ${process.env.WINDMILL_URL || 'http://localhost:8000'}`);

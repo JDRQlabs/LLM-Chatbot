@@ -17,7 +17,7 @@ from unittest.mock import Mock, patch, MagicMock
 # Add parent directories to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../f/development'))
 
-# Mock wmill module before importing step3_2
+# Mock wmill module before importing step4_
 mock_wmill = Mock()
 mock_wmill.get_resource.return_value = {
     "host": "localhost",
@@ -31,15 +31,15 @@ sys.modules['wmill'] = mock_wmill
 # Import the module under test
 import importlib.util
 spec = importlib.util.spec_from_file_location(
-    "step3_2",
-    os.path.join(os.path.dirname(__file__), '../../f/development/3_2_save_chat_history.py')
+    "step4_",
+    os.path.join(os.path.dirname(__file__), '../../f/development/4__save_chat_history.py')
 )
-step3_2_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(step3_2_module)
-step3_2_main = step3_2_module.main
+step4__module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(step4__module)
+step4__main = step4__module.main
 
 
-class TestStep3_2SaveHistory:
+class TestStep4_SaveHistory:
     """Test Step 3.2's chat history persistence functionality"""
 
     @patch('psycopg2.connect')
@@ -51,7 +51,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -93,7 +93,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -128,7 +128,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": False,  # Step 1 failed
                 "reason": "Chatbot not found"
@@ -153,7 +153,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -177,7 +177,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -201,7 +201,7 @@ class TestStep3_2SaveHistory:
         # Simulate connection failure
         mock_connect.side_effect = Exception("Connection refused")
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -225,7 +225,7 @@ class TestStep3_2SaveHistory:
         # Simulate INSERT failure
         mock_cursor.execute.side_effect = Exception("Foreign key constraint violation")
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-999"}  # Non-existent contact
@@ -246,7 +246,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -276,7 +276,7 @@ class TestStep3_2SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -304,7 +304,7 @@ class TestStep3_2SaveHistory:
 
         contact_id = "contact-abc-123"
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": contact_id}
@@ -337,7 +337,7 @@ class TestStep3_2SaveHistory:
         # Simulate error during execution
         mock_cursor.execute.side_effect = Exception("Test error")
 
-        result = step3_2_main(
+        result = step4__main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}

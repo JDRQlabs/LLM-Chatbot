@@ -1,7 +1,7 @@
 {
-  "name": "fastbots-api-server",
+  "name": "whatsapp-chatbot-server",
   "version": "1.0.0",
-  "description": "FastBots.ai Knowledge Base API Server",
+  "description": "Chatbot Knowledge Base API Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

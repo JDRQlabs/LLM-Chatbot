@@ -1,6 +1,6 @@
 summary: ''
 description: ''
-lock: '!inline f/development/3_3_log_usage.script.lock'
+lock: '!inline f/development/5_log_usage.script.lock'
 kind: script
 schema:
   $schema: 'https://json-schema.org/draft/2020-12/schema'

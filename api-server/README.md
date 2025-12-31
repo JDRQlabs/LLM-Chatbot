@@ -1,4 +1,4 @@
-# FastBots.ai Knowledge Base API
+# Chatbot Knowledge Base API
 
 REST API for managing chatbot knowledge bases with PDF/DOCX uploads, URL ingestion, web crawling, and RAG search.
 
@@ -451,7 +451,7 @@ GET /health
 {
   "status": "healthy",
   "timestamp": "2024-01-15T10:00:00.000Z",
-  "service": "fastbots-api-server",
+  "service": "whatsapp-chatbot-server",
   "version": "1.0.0"
 }
 ```
@@ -488,7 +488,7 @@ WINDMILL_WORKSPACE=development
 ### Running with Docker
 
 ```bash
-docker-compose up fastbots_api
+docker-compose up whatsapp_chatbot_api
 ```
 
 ---

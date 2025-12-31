@@ -310,9 +310,9 @@ services:
       retries: 3
     logging: *default-logging
 
-  fastbots_api:
+  whatsapp_chatbot_api:
     build: ./api-server
-    container_name: fastbots_api
+    container_name: whatsapp_chatbot_api
     restart: unless-stopped
     ports:
       - "4000:4000"
@@ -345,7 +345,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: fastbots_redis
+    container_name: whatsapp_chatbot_redis
     restart: unless-stopped
     expose:
       - 6379

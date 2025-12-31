@@ -93,15 +93,15 @@ def step3_1_module():
 
 
 @pytest.fixture
-def step3_2_module():
+def step4__module():
     """Import Step 3.2: Save History"""
-    return import_step_module("step3_2", "3_2_save_chat_history.py")
+    return import_step_module("step4_", "4__save_chat_history.py")
 
 
 @pytest.fixture
-def step3_3_module():
+def step5__module():
     """Import Step 3.3: Log Usage"""
-    return import_step_module("step3_3", "3_3_log_usage.py")
+    return import_step_module("step5_", "5__log_usage.py")
 
 
 # ============================================================================
@@ -184,8 +184,8 @@ class TestCompleteFlow:
         step1_module,
         step2_module,
         step3_1_module,
-        step3_2_module,
-        step3_3_module,
+        step4__module,
+        step5__module,
         mock_wmill,
         mock_llm,
         mock_whatsapp
@@ -289,7 +289,7 @@ class TestCompleteFlow:
             assert llm_result["reply_text"] in sent_message["text"]
 
             # STEP 3.2: Save Chat History
-            history_result = step3_2_module.main(
+            history_result = step4__module.main(
                 context_payload=context_result,
                 user_message=test_message_data["message_text"],
                 llm_result=llm_result,
@@ -315,7 +315,7 @@ class TestCompleteFlow:
             assert len(assistant_messages) >= 1, "Assistant message not saved"
 
             # STEP 3.3: Log Usage
-            usage_result = step3_3_module.main(
+            usage_result = step5__module.main(
                 context_payload=context_result,
                 llm_result=llm_result,
                 send_result=send_result,
@@ -365,8 +365,8 @@ class TestErrorPropagation:
         step1_module,
         step2_module,
         step3_1_module,
-        step3_2_module,
-        step3_3_module,
+        step4__module,
+        step5__module,
         mock_wmill
     ):
         """
@@ -413,7 +413,7 @@ class TestErrorPropagation:
             assert "previous steps failed" in send_result["error"]
 
             # STEP 3.2: Should skip
-            history_result = step3_2_module.main(
+            history_result = step4__module.main(
                 context_payload=context_result,
                 user_message="Hello",
                 llm_result=llm_result,
@@ -424,7 +424,7 @@ class TestErrorPropagation:
             assert "Step 1 failed" in history_result["error"]
 
             # STEP 3.3: Should skip
-            usage_result = step3_3_module.main(
+            usage_result = step5__module.main(
                 context_payload=context_result,
                 llm_result=llm_result,
                 send_result=send_result
@@ -443,8 +443,8 @@ class TestErrorPropagation:
         step1_module,
         step2_module,
         step3_1_module,
-        step3_2_module,
-        step3_3_module,
+        step4__module,
+        step5__module,
         mock_wmill,
         mock_whatsapp
     ):
@@ -506,7 +506,7 @@ class TestErrorPropagation:
             # This depends on implementation details
 
             # STEP 3.2: Should skip (no successful LLM response)
-            history_result = step3_2_module.main(
+            history_result = step4__module.main(
                 context_payload=context_result,
                 user_message=test_message_data["message_text"],
                 llm_result=llm_result,
@@ -516,7 +516,7 @@ class TestErrorPropagation:
             # History save behavior depends on whether send succeeded
 
             # STEP 3.3: Should skip
-            usage_result = step3_3_module.main(
+            usage_result = step5__module.main(
                 context_payload=context_result,
                 llm_result=llm_result,
                 send_result=send_result
@@ -534,8 +534,8 @@ class TestErrorPropagation:
         step1_module,
         step2_module,
         step3_1_module,
-        step3_2_module,
-        step3_3_module,
+        step4__module,
+        step5__module,
         mock_wmill,
         mock_whatsapp
     ):
@@ -610,7 +610,7 @@ class TestErrorPropagation:
             messages_before = cur.fetchone()["count"]
 
             # STEP 3.2: Should skip
-            history_result = step3_2_module.main(
+            history_result = step4__module.main(
                 context_payload=context_result,
                 user_message=test_message_data["message_text"],
                 llm_result=llm_result,
@@ -631,7 +631,7 @@ class TestErrorPropagation:
             assert messages_after == messages_before, "Messages should not be saved when send fails"
 
             # STEP 3.3: Should skip
-            usage_result = step3_3_module.main(
+            usage_result = step5__module.main(
                 context_payload=context_result,
                 llm_result=llm_result,
                 send_result=send_result
@@ -834,7 +834,7 @@ class TestQuotaEnforcement:
         test_message_data,
         seed_test_data,
         step1_module,
-        step3_3_module,
+        step5__module,
         mock_wmill
     ):
         """
@@ -931,7 +931,7 @@ class TestQuotaEnforcement:
         db_with_autocommit,
         test_message_data,
         seed_test_data,
-        step3_3_module,
+        step5__module,
         mock_wmill
     ):
         """
@@ -980,7 +980,7 @@ class TestQuotaEnforcement:
 
         with patch('wmill.get_resource', mock_wmill.get_resource):
             # Log usage
-            usage_result = step3_3_module.main(
+            usage_result = step5__module.main(
                 context_payload=context_payload,
                 llm_result=llm_result,
                 send_result=send_result

@@ -18,7 +18,7 @@ from unittest.mock import Mock, patch, MagicMock
 # Add parent directories to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../f/development'))
 
-# Mock wmill module before importing step3_3
+# Mock wmill module before importing step5_
 mock_wmill = Mock()
 mock_wmill.get_resource.return_value = {
     "host": "localhost",
@@ -32,16 +32,16 @@ sys.modules['wmill'] = mock_wmill
 # Import the module under test
 import importlib.util
 spec = importlib.util.spec_from_file_location(
-    "step3_3",
-    os.path.join(os.path.dirname(__file__), '../../f/development/3_3_log_usage.py')
+    "step5_",
+    os.path.join(os.path.dirname(__file__), '../../f/development/5__log_usage.py')
 )
-step3_3_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(step3_3_module)
-step3_3_main = step3_3_module.main
-_get_cost_per_1k_tokens = step3_3_module._get_cost_per_1k_tokens
+step5__module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(step5__module)
+step5__main = step5__module.main
+_get_cost_per_1k_tokens = step5__module._get_cost_per_1k_tokens
 
 
-class TestStep3_3UsageLogging:
+class TestStep5_UsageLogging:
     """Test Step 3.3's usage logging functionality"""
 
     @patch('psycopg2.connect')
@@ -55,7 +55,7 @@ class TestStep3_3UsageLogging:
         # Mock the RETURNING id from INSERT
         mock_cursor.fetchone.return_value = {"id": 12345}
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {
@@ -124,7 +124,7 @@ class TestStep3_3UsageLogging:
         mock_cursor.fetchone.return_value = {"id": 100}
 
         # LLM result without usage_info
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {
@@ -153,7 +153,7 @@ class TestStep3_3UsageLogging:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchone.return_value = {"id": 100}
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {
@@ -187,7 +187,7 @@ class TestStep3_3UsageLogging:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": False,  # Step 1 failed
                 "reason": "Chatbot not found"
@@ -208,7 +208,7 @@ class TestStep3_3UsageLogging:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {"id": "chatbot-123", "organization_id": "org-456"},
@@ -232,7 +232,7 @@ class TestStep3_3UsageLogging:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {"id": "chatbot-123", "organization_id": "org-456"},
@@ -261,7 +261,7 @@ class TestStep3_3UsageLogging:
         # Simulate database error
         mock_cursor.execute.side_effect = Exception("Database constraint violation")
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {"id": "chatbot-123", "organization_id": "org-456"},
@@ -286,7 +286,7 @@ class TestStep3_3UsageLogging:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchone.return_value = {"id": 100}
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {
@@ -348,7 +348,7 @@ class TestStep3_3UsageLogging:
 
         webhook_id = 99999
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {"id": "chatbot-123", "organization_id": "org-456"},
@@ -376,7 +376,7 @@ class TestStep3_3UsageLogging:
         # Simulate error
         mock_cursor.execute.side_effect = Exception("Test error")
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {"id": "chatbot-123", "organization_id": "org-456"},
@@ -403,7 +403,7 @@ class TestStep3_3UsageLogging:
         # Simulate logging failure
         mock_cursor.execute.side_effect = Exception("Logging failed")
 
-        result = step3_3_main(
+        result = step5__main(
             context_payload={
                 "proceed": True,
                 "chatbot": {"id": "chatbot-123", "organization_id": "org-456"},

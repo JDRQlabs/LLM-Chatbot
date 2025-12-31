@@ -83,7 +83,7 @@ value:
             type: javascript
             expr: results.step3
         is_trigger: false
-        path: f/development/3_2_save_chat_history
+        path: f/development/4__save_chat_history
     - id: step5
       summary: Log usage for billing and analytics
       skip_if:
@@ -104,7 +104,7 @@ value:
             type: javascript
             expr: results.step3
         is_trigger: false
-        path: f/development/3_3_log_usage
+        path: f/development/5__log_usage
     - id: step6
       summary: Alert admin on LLM errors (rate limits, quota exceeded, etc.)
       skip_if:

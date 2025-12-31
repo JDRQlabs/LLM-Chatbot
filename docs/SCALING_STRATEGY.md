@@ -1,6 +1,6 @@
 # Database Scaling Strategy
 
-This document outlines the path for scaling FastBots.ai from MVP to production at scale.
+This document outlines the path for scaling Whatsapp Chatbot from MVP to production at scale.
 
 ## Current Architecture (MVP)
 
@@ -34,7 +34,7 @@ This document outlines the path for scaling FastBots.ai from MVP to production a
 1. **Attach Block Storage Volume** (20GB, €2.40/month):
    ```bash
    # On Hetzner Cloud Console:
-   # Create volume: fastbots-db-volume (20GB, ext4)
+   # Create volume: whatsapp-chatbot-db-volume (20GB, ext4)
    # Attach to server, mount at /mnt/db-storage
 
    # Update docker-compose.yml:
@@ -57,10 +57,10 @@ This document outlines the path for scaling FastBots.ai from MVP to production a
 
    # Upload to Hetzner Object Storage (S3-compatible)
    s3cmd put /tmp/backup_${DATE}.sql.gz \
-     s3://fastbots-backups/db/backup_${DATE}.sql.gz
+     s3://whatsapp-chatbot-backups/db/backup_${DATE}.sql.gz
 
    # Cleanup old backups (keep 30 days)
-   s3cmd ls s3://fastbots-backups/db/ | \
+   s3cmd ls s3://whatsapp-chatbot-backups/db/ | \
      awk '{print $4}' | \
      sort | \
      head -n -30 | \
@@ -73,7 +73,7 @@ This document outlines the path for scaling FastBots.ai from MVP to production a
 3. **Test Restore Procedure**:
    ```bash
    # Download latest backup
-   s3cmd get s3://fastbots-backups/db/backup_latest.sql.gz
+   s3cmd get s3://whatsapp-chatbot-backups/db/backup_latest.sql.gz
 
    # Restore to test database
    gunzip backup_latest.sql.gz
@@ -129,7 +129,7 @@ This document outlines the path for scaling FastBots.ai from MVP to production a
    DB_HOST=managed-db.hetzner.cloud
 
    # 3. Restart application
-   docker-compose restart fastbots_api webhook-ingress
+   docker-compose restart whatsapp_chatbot_api webhook-ingress
 
    # 4. Verify data consistency
    # 5. Decomission Docker database container

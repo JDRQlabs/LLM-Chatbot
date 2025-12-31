@@ -1,6 +1,6 @@
 # Database Setup Guide
 
-This directory contains the database schema and seed data for the FastBots Clone MVP.
+This directory contains the database schema and seed data for the Whatsapp Chatbot MVP.
 
 ## Prerequisites
 
