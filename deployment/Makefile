@@ -34,7 +34,7 @@ SERVER_ID := $(shell hcloud server list -o noheader -o columns=id,name | awk '$$
 VOLUME_ID := $(shell hcloud volume list -o noheader -o columns=id,name | awk '$$2=="$(HETZNER_VOLUME_NAME)" {print $$1}')
 CLOUD_INIT := cloud-init.yaml
 
-.PHONY: up down status ip ssh deploy logs labels $(CLOUD_INIT) volume-create volume-attach volume-detach volume-setup start-prod stop-prod logs-prod healthcheck db-init db-reset ps restart-service full-deploy create-admin
+.PHONY: up down status ip ssh deploy logs labels $(CLOUD_INIT) volume-create volume-attach volume-detach volume-setup start-prod stop-prod logs-prod healthcheck db-init db-reset ps restart-service full-deploy create-admin setup-windmill help
 
 # Always regenerate cloud-init.yaml to pick up .env changes
 $(CLOUD_INIT):
@@ -347,3 +347,72 @@ create-admin: validate
 			createAdmin(); \
 		\" \
 	"
+
+# Setup Windmill (create workspace, token, sync scripts)
+# Run this after Windmill is healthy on a fresh deployment
+# Usage: make setup-windmill
+setup-windmill: validate
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Setting up Windmill on $$IP..."; \
+	echo "This will:"; \
+	echo "  1. Create a 'production' workspace"; \
+	echo "  2. Generate an API token"; \
+	echo "  3. Sync scripts and flows"; \
+	echo ""; \
+	WINDMILL_URL="http://$$IP:8000" \
+	WORKSPACE_NAME="production" \
+	WORKSPACE_ID="production" \
+	SCRIPTS_DIR="$(SRC_DIR)" \
+	./scripts/setup-windmill.sh
+
+# Show help
+help:
+	@echo "=== WhatsApp Chatbot Deployment Makefile ==="
+	@echo ""
+	@echo "Server Management:"
+	@echo "  make up              - Create a new VM"
+	@echo "  make down            - Delete the VM (with confirmation)"
+	@echo "  make status          - Show server and volume status"
+	@echo "  make ip              - Show server IP"
+	@echo "  make ssh             - SSH into the server"
+	@echo ""
+	@echo "Volume Management:"
+	@echo "  make volume-create   - Create persistent storage volume"
+	@echo "  make volume-attach   - Attach volume to server"
+	@echo "  make volume-setup    - Setup volume directories"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  make deploy          - Sync code to server"
+	@echo "  make start-prod      - Start all services"
+	@echo "  make stop-prod       - Stop all services"
+	@echo "  make full-deploy     - Full deployment workflow"
+	@echo ""
+	@echo "Database:"
+	@echo "  make db-init         - Initialize database schema"
+	@echo "  make db-reset        - Reset database (destructive!)"
+	@echo ""
+	@echo "Admin & Setup:"
+	@echo "  make create-admin    - Create admin user (EMAIL=... PASSWORD=...)"
+	@echo "  make setup-windmill  - Setup Windmill workspace and sync flows"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  make ps              - Show container status"
+	@echo "  make logs-prod       - Tail production logs"
+	@echo "  make healthcheck     - Run health checks"
+	@echo "  make restart-service SERVICE=<name>  - Restart a service"
+	@echo ""
+	@echo "Fresh VM Setup Workflow:"
+	@echo "  1. make volume-create     (one-time)"
+	@echo "  2. make up"
+	@echo "  3. make volume-attach"
+	@echo "  4. make deploy"
+	@echo "  5. make volume-setup"
+	@echo "  6. make start-prod"
+	@echo "  7. make db-init"
+	@echo "  8. make setup-windmill"
+	@echo "  9. make create-admin EMAIL=... PASSWORD=..."
+	@echo ""

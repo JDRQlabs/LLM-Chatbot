@@ -107,10 +107,14 @@ services:
     restart: unless-stopped
     expose:
       - 8000
+    # Temporarily expose port 8000 for direct admin access (remove in production with domain)
+    ports:
+      - "8000:8000"
     environment:
       - DATABASE_URL=${WINDMILL_DATABASE_URL}
       - MODE=server
       - NUM_WORKERS=0
+      - BASE_URL=http://${DOMAIN:-localhost}/windmill
     depends_on:
       db:
         condition: service_healthy

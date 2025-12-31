@@ -42,18 +42,9 @@
         reverse_proxy whatsapp_chatbot_api:4000
     }
 
-    # Windmill UI and API (protected with basic auth)
-    handle /windmill* {
-        # SECURITY: Basic auth for Windmill access
-        # Generate password hash with: caddy hash-password
-        # Default credentials: admin / change-me-in-production
-        # Hash for "change-me-in-production": $2a$14$Zkx0OVAJzHxqyOCb3Wj.2e9uR5p5uV5x5u5u5u5u5u5u5u5u5u5u5u
-        basicauth {
-            admin $2a$14$eQmV4w8iKsWZlwPaB7fYguQvqoKCh.M3x0YM5sFGLZwMpzxs/Rloe
-        }
-        uri strip_prefix /windmill
-        reverse_proxy windmill_server:8000
-    }
+    # NOTE: Windmill doesn't support subpath routing (/windmill) - frontend assets break.
+    # For production, use subdomain routing: windmill.yourdomain.com (see OPTION 2 below)
+    # For now, access Windmill directly at http://<server-ip>:8000
 
     # Health check endpoint
     handle /health {
@@ -108,17 +99,9 @@
         reverse_proxy whatsapp_chatbot_api:4000
     }
 
-    # Windmill UI and API (protected with basic auth)
-    handle /windmill* {
-        # SECURITY: Basic auth for Windmill access
-        # Generate password hash with: caddy hash-password
-        # Default credentials: admin / change-me-in-production
-        basicauth {
-            admin $2a$14$eQmV4w8iKsWZlwPaB7fYguQvqoKCh.M3x0YM5sFGLZwMpzxs/Rloe
-        }
-        uri strip_prefix /windmill
-        reverse_proxy windmill_server:8000
-    }
+    # NOTE: Windmill doesn't support subpath routing (/windmill) - frontend assets break.
+    # For production, use subdomain routing: windmill.yourdomain.com (see OPTION 2 below)
+    # For now, access Windmill directly at http://<server-ip>:8000
 
     # Health check endpoint
     handle /health {
