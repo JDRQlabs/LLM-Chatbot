@@ -46,50 +46,35 @@ def main(
 
     try:
         # ============================================================
-        # STEP 1A: IDEMPOTENCY CHECK
+        # STEP 1A: LOOK UP WEBHOOK EVENT
         # ============================================================
-        # Check if we've already processed this exact message
-        idempotency_check = """
+        # The webhook_events record is created by Express (webhook-server)
+        # before triggering Windmill. We just need to look it up here.
+        # This avoids duplicate idempotency checks and race conditions.
+        webhook_lookup = """
             SELECT id, status, processed_at
             FROM webhook_events
             WHERE whatsapp_message_id = %s
         """
-        cur.execute(idempotency_check, (message_id,))
+        cur.execute(webhook_lookup, (message_id,))
         existing_event = cur.fetchone()
 
         if existing_event:
             status = existing_event["status"]
-            
+            webhook_event_id = existing_event["id"]
+
+            # If already completed, skip (shouldn't happen but handle gracefully)
             if status == "completed":
-                print(f"Duplicate message detected: {message_id} (already completed)")
+                print(f"Message already processed: {message_id}")
                 return {
                     "proceed": False,
-                    "reason": "Duplicate - Already Processed",
-                    "webhook_event_id": existing_event["id"],
+                    "reason": "Already Processed",
+                    "webhook_event_id": webhook_event_id,
                 }
-            
-            elif status == "processing":
-                print(f"Duplicate message detected: {message_id} (currently processing)")
-                return {
-                    "proceed": False,
-                    "reason": "Duplicate - Currently Processing",
-                    "webhook_event_id": existing_event["id"],
-                }
-            
-            elif status == "failed":
-                print(f"Retrying previously failed message: {message_id}")
-                # Allow retry of failed messages
-                # Update status to processing
-                cur.execute(
-                    "UPDATE webhook_events SET status = 'processing', received_at = NOW() WHERE id = %s",
-                    (existing_event["id"],)
-                )
-                conn.commit()
-                webhook_event_id = existing_event["id"]
-            else:
-                webhook_event_id = existing_event["id"]
         else:
-            # Create new webhook event record
+            # No existing record - Express should have created it
+            # Create one as fallback (for backwards compatibility / manual testing)
+            print(f"Warning: No webhook_events record found for {message_id}, creating one")
             create_event = """
                 INSERT INTO webhook_events (
                     whatsapp_message_id,
@@ -97,6 +82,7 @@ def main(
                     status,
                     received_at
                 ) VALUES (%s, %s, 'processing', NOW())
+                ON CONFLICT (whatsapp_message_id) DO UPDATE SET status = 'processing'
                 RETURNING id
             """
             cur.execute(create_event, (message_id, whatsapp_phone_id))

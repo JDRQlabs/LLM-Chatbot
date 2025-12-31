@@ -181,91 +181,91 @@ graph TD
 ##### API Endpoints Implementation
 
 **Auth Domain:**
-- [ ] Install dependencies: `jsonwebtoken`, `bcrypt`, `express-validator`
-- [ ] Create `POST /api/auth/register` endpoint
-  - [ ] Validate email, password (min 8 chars)
-  - [ ] Hash password with bcrypt
-  - [ ] Create organization and user record
-  - [ ] Return JWT token
-- [ ] Create `POST /api/auth/login` endpoint
-  - [ ] Verify email/password
-  - [ ] Generate JWT token (expires in 24h)
-  - [ ] Return token + user info
-- [ ] Create `GET /api/auth/me` endpoint
-  - [ ] Verify JWT token
-  - [ ] Return current user + organization info
-- [ ] Create JWT middleware: `verifyToken(req, res, next)`
-  - [ ] Extract token from `Authorization: Bearer <token>` header
-  - [ ] Verify token signature
-  - [ ] Attach `req.user` and `req.organizationId` to request
-  - [ ] Handle expired/invalid tokens gracefully
+- [x] Install dependencies: `jsonwebtoken`, `bcrypt`, `express-validator`
+- [x] Create `POST /api/auth/register` endpoint
+  - [x] Validate email, password (min 8 chars)
+  - [x] Hash password with bcrypt
+  - [x] Create organization and user record
+  - [x] Return JWT token
+- [x] Create `POST /api/auth/login` endpoint
+  - [x] Verify email/password
+  - [x] Generate JWT token (expires in 24h)
+  - [x] Return token + user info
+- [x] Create `GET /api/auth/me` endpoint
+  - [x] Verify JWT token
+  - [x] Return current user + organization info
+- [x] Create JWT middleware: `verifyToken(req, res, next)`
+  - [x] Extract token from `Authorization: Bearer <token>` header
+  - [x] Verify token signature
+  - [x] Attach `req.user` and `req.organizationId` to request
+  - [x] Handle expired/invalid tokens gracefully
 
 **Tenants/Organizations Domain:**
-- [ ] Create `GET /api/organizations/usage` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Query `usage_summary` view (from existing schema)
-  - [ ] Return: messages_used, messages_limit, tokens_used, tokens_limit, current_tier
-  - [ ] Filter by `req.organizationId` (security: users can only see their own org)
-- [ ] Create `PUT /api/organizations/billing` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Update billing tier (Free, Pro, Enterprise)
-  - [ ] Validate tier exists
-  - [ ] Update `organizations` table
+- [x] Create `GET /api/organizations/usage` endpoint
+  - [x] Require JWT authentication
+  - [x] Query `usage_summary` view (from existing schema)
+  - [x] Return: messages_used, messages_limit, tokens_used, tokens_limit, current_tier
+  - [x] Filter by `req.organizationId` (security: users can only see their own org)
+- [x] Create `PUT /api/organizations/billing` endpoint
+  - [x] Require JWT authentication
+  - [x] Update billing tier (Free, Pro, Enterprise)
+  - [x] Validate tier exists
+  - [x] Update `organizations` table
 
 **Chatbots Domain:**
-- [ ] Create `GET /api/chatbots` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Query `chatbots` table filtered by `organization_id`
-  - [ ] Return: id, name, system_prompt, temperature, created_at, status
-  - [ ] Support pagination (limit/offset)
-- [ ] Create `GET /api/chatbots/:id` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Verify chatbot belongs to user's organization (security check)
-  - [ ] Return full chatbot details
-- [ ] Create `PATCH /api/chatbots/:id` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Verify chatbot belongs to user's organization
-  - [ ] Allow updating: `system_prompt`, `temperature`, `name`
-  - [ ] Validate temperature range (0.0 - 2.0)
-  - [ ] Update database directly (don't use Windmill for config updates)
-- [ ] Create `POST /api/chatbots` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Create new chatbot for organization
-  - [ ] Set default system_prompt and temperature
-  - [ ] Return created chatbot
+- [x] Create `GET /api/chatbots` endpoint
+  - [x] Require JWT authentication
+  - [x] Query `chatbots` table filtered by `organization_id`
+  - [x] Return: id, name, system_prompt, temperature, created_at, status
+  - [x] Support pagination (limit/offset)
+- [x] Create `GET /api/chatbots/:id` endpoint
+  - [x] Require JWT authentication
+  - [x] Verify chatbot belongs to user's organization (security check)
+  - [x] Return full chatbot details
+- [x] Create `PATCH /api/chatbots/:id` endpoint
+  - [x] Require JWT authentication
+  - [x] Verify chatbot belongs to user's organization
+  - [x] Allow updating: `system_prompt`, `temperature`, `name`
+  - [x] Validate temperature range (0.0 - 2.0)
+  - [x] Update database directly (don't use Windmill for config updates)
+- [x] Create `POST /api/chatbots` endpoint
+  - [x] Require JWT authentication
+  - [x] Create new chatbot for organization
+  - [x] Set default system_prompt and temperature
+  - [x] Return created chatbot
 
 **Integrations Domain:**
-- [ ] Create `GET /api/integrations/available` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Query `org_integrations` table for available MCP tools
-  - [ ] Return: integration_id, name, description, enabled, config
-  - [ ] Filter by organization_id
-- [ ] Create `POST /api/integrations/enable` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Enable integration for organization
-  - [ ] Insert/update `org_integrations` table
-  - [ ] Validate integration exists
-- [ ] Create `DELETE /api/integrations/:id` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Disable integration for organization
-  - [ ] Soft delete or set `enabled = false`
+- [x] Create `GET /api/integrations/available` endpoint
+  - [x] Require JWT authentication
+  - [x] Query `org_integrations` table for available MCP tools
+  - [x] Return: integration_id, name, description, enabled, config
+  - [x] Filter by organization_id
+- [x] Create `POST /api/integrations/enable` endpoint
+  - [x] Require JWT authentication
+  - [x] Enable integration for organization
+  - [x] Insert/update `org_integrations` table
+  - [x] Validate integration exists
+- [x] Create `DELETE /api/integrations/:id` endpoint
+  - [x] Require JWT authentication
+  - [x] Disable integration for organization
+  - [x] Soft delete or set `enabled = false`
 
 **History Domain:**
-- [ ] Create `GET /api/chatbots/:id/history` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Verify chatbot belongs to user's organization
-  - [ ] **CRITICAL**: Implement cursor-based pagination
-    - [ ] Use `created_at` + `id` as cursor
-    - [ ] Support `limit` parameter (default: 50, max: 200)
-    - [ ] Support `cursor` parameter for next page
-    - [ ] Return: `{ messages: [...], nextCursor: "..." }`
-  - [ ] Query `messages` table with proper indexes
-  - [ ] Do NOT load 10,000+ messages at once (performance killer)
-  - [ ] Support filtering by date range (optional)
-- [ ] Create `GET /api/chatbots/:id/history/:messageId` endpoint
-  - [ ] Require JWT authentication
-  - [ ] Return single message with full context
-  - [ ] Include related messages (thread context)
+- [x] Create `GET /api/chatbots/:id/history` endpoint
+  - [x] Require JWT authentication
+  - [x] Verify chatbot belongs to user's organization
+  - [x] **CRITICAL**: Implement cursor-based pagination
+    - [x] Use `created_at` + `id` as cursor
+    - [x] Support `limit` parameter (default: 50, max: 200)
+    - [x] Support `cursor` parameter for next page
+    - [x] Return: `{ messages: [...], nextCursor: "..." }`
+  - [x] Query `messages` table with proper indexes
+  - [x] Do NOT load 10,000+ messages at once (performance killer)
+  - [x] Support filtering by date range (optional)
+- [x] Create `GET /api/chatbots/:id/history/:messageId` endpoint
+  - [x] Require JWT authentication
+  - [x] Return single message with full context
+  - [x] Include related messages (thread context)
 
 **Knowledge Base Domain (Existing - Verify):**
 - [ ] Verify existing endpoints work with JWT auth:
@@ -278,37 +278,37 @@ graph TD
 ##### Security Implementation
 
 **JWT Configuration:**
-- [ ] Set JWT secret in environment variable (`JWT_SECRET`)
-- [ ] Configure JWT expiration (24 hours recommended)
+- [x] Set JWT secret in environment variable (`JWT_SECRET`)
+- [x] Configure JWT expiration (24 hours recommended)
 - [ ] Implement token refresh mechanism (optional for MVP)
 - [ ] Add rate limiting to auth endpoints (prevent brute force)
 
 **CORS Configuration:**
-- [ ] Install `cors` middleware
-- [ ] Configure strict CORS policy:
-  - [ ] Allow only frontend domain (e.g., `https://dashboard.your-saas.com`)
-  - [ ] Allow credentials: true
-  - [ ] Set appropriate headers: `Authorization`, `Content-Type`
+- [x] Install `cors` middleware
+- [x] Configure strict CORS policy:
+  - [x] Allow only frontend domain (e.g., `https://dashboard.your-saas.com`)
+  - [x] Allow credentials: true
+  - [x] Set appropriate headers: `Authorization`, `Content-Type`
 - [ ] Test CORS with frontend domain (even if frontend is deferred)
 
 **Authorization Middleware:**
-- [ ] Create `requireOrganizationAccess(req, res, next)` middleware
-  - [ ] Verify user's `organization_id` matches resource's `organization_id`
-  - [ ] Prevent users from accessing other organizations' data
-- [ ] Apply to all organization-scoped endpoints
+- [x] Create `requireOrganizationAccess(req, res, next)` middleware
+  - [x] Verify user's `organization_id` matches resource's `organization_id`
+  - [x] Prevent users from accessing other organizations' data
+- [x] Apply to all organization-scoped endpoints
 - [ ] Test authorization with different organization IDs
 
 **Input Validation:**
-- [ ] Use `express-validator` for all POST/PATCH endpoints
-- [ ] Validate email format
-- [ ] Validate password strength (min 8 chars, complexity)
-- [ ] Sanitize user inputs (prevent SQL injection)
-- [ ] Validate UUIDs for resource IDs
+- [x] Use `express-validator` for all POST/PATCH endpoints
+- [x] Validate email format
+- [x] Validate password strength (min 8 chars, complexity)
+- [x] Sanitize user inputs (prevent SQL injection)
+- [x] Validate UUIDs for resource IDs
 
 ##### MCP Server Deployment
 
 **Docker Compose Configuration:**
-- [ ] Add MCP services to `docker-compose.prod.yml`:
+- [x] Add MCP services to `docker-compose.prod.yml`:
   ```yaml
   mcp_pricing_calculator:
     build: ./mcp-servers/pricing-calculator
@@ -318,14 +318,14 @@ graph TD
     # Remove: ports: - "3001:3001"
     networks:
       - internal
-  
+
   mcp_lead_capture:
     build: ./mcp-servers/lead-capture
     environment:
       - PORT=3002
     networks:
       - internal
-  
+
   mcp_contact_owner:
     build: ./mcp-servers/contact-owner
     environment:
@@ -333,24 +333,25 @@ graph TD
     networks:
       - internal
   ```
-- [ ] Create `internal` Docker network for MCP services
-- [ ] Configure Windmill to access MCPs via container names:
-  - [ ] `http://mcp_pricing_calculator:3001`
-  - [ ] `http://mcp_lead_capture:3002`
-  - [ ] `http://mcp_contact_owner:3003`
+- [x] Create `internal` Docker network for MCP services
+- [x] Configure Windmill to access MCPs via container names:
+  - [x] `http://mcp_pricing_calculator:3001`
+  - [x] `http://mcp_lead_capture:3002`
+  - [x] `http://mcp_contact_owner:3003`
 - [ ] Verify MCP servers are NOT accessible from public internet
 - [ ] Test MCP connectivity from Windmill workers
 
 ##### Reverse Proxy Configuration
 
 **Caddy/Nginx Setup:**
-- [ ] Install Caddy or Nginx on host (or run in Docker)
-- [ ] Configure reverse proxy routing:
-  - [ ] `api.yoursite.com` → `whatsapp_chatbot_api` container (port 4000)
-  - [ ] `webhook.yoursite.com` → `webhook-ingress` container (port 3000)
-- [ ] Set up SSL certificates (Let's Encrypt via Caddy, or manual certs)
+- [x] Install Caddy or Nginx on host (or run in Docker) - Caddy in docker-compose.prod.yml
+- [x] Configure reverse proxy routing:
+  - [x] `/api/*` → `whatsapp_chatbot_api` container (port 4000)
+  - [x] `/webhook*` → `webhook-ingress` container (port 3000)
+  - [x] `/windmill*` → `windmill_server` container (port 8000)
+- [x] Set up SSL certificates (Let's Encrypt via Caddy, or manual certs)
 - [ ] Configure rate limiting at proxy level
-- [ ] Add security headers (HSTS, X-Frame-Options, etc.)
+- [x] Add security headers (HSTS, X-Frame-Options, etc.)
 - [ ] Test routing and SSL
 
 ##### API Testing

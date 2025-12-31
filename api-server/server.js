@@ -1,29 +1,49 @@
 /**
- * Chatbot Knowledge Base API Server
+ * WhatsApp Chatbot Management API Server
  *
- * Provides REST API for managing chatbot knowledge bases:
- * - File uploads (PDF, DOCX)
- * - URL ingestion
- * - Web crawling
- * - Document management
- * - RAG search testing
+ * Provides REST API for:
+ * - Authentication (JWT-based)
+ * - Organization management
+ * - Chatbot configuration
+ * - Conversation history
+ * - Integrations/MCP tools
+ * - Knowledge base management (RAG)
  */
 
 const express = require('express');
 const cors = require('cors');
+
+// Route imports
+const authRoutes = require('./routes/auth');
+const chatbotsRoutes = require('./routes/chatbots');
+const organizationsRoutes = require('./routes/organizations');
+const integrationsRoutes = require('./routes/integrations');
+const historyRoutes = require('./routes/history');
 const knowledgeRoutes = require('./routes/knowledge');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// CORS configuration
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+  });
   next();
 });
 
@@ -32,13 +52,18 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    service: 'whatsapp-chatbot-server',
+    service: 'whatsapp-chatbot-api',
     version: '1.0.0'
   });
 });
 
 // API routes
-app.use('/api/chatbots', knowledgeRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/organizations', organizationsRoutes);
+app.use('/api/chatbots', chatbotsRoutes);
+app.use('/api/chatbots', historyRoutes);  // History is nested under chatbots
+app.use('/api/chatbots', knowledgeRoutes); // Knowledge is nested under chatbots
+app.use('/api/integrations', integrationsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
