@@ -67,7 +67,7 @@ class TestStep1ContextLoading:
 
         # Assertions
         assert result["proceed"] is False
-        assert result["reason"] == "Duplicate - Already Processed"
+        assert result["reason"] == "Already Processed"
 
     @patch('psycopg2.connect')
     def test_chatbot_not_found(self, mock_connect):

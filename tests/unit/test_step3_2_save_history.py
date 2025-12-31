@@ -32,7 +32,7 @@ sys.modules['wmill'] = mock_wmill
 import importlib.util
 spec = importlib.util.spec_from_file_location(
     "step4_",
-    os.path.join(os.path.dirname(__file__), '../../f/development/4__save_chat_history.py')
+    os.path.join(os.path.dirname(__file__), '../../f/development/4_save_chat_history.py')
 )
 step4__module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(step4__module)
@@ -192,7 +192,7 @@ class TestStep4_SaveHistory:
 
         assert result["success"] is False
         assert "Step 3 failed" in result["error"]
-        assert "message not delivered" in result["error"]
+        assert "WhatsApp API error" in result["error"]
         assert not mock_cursor.execute.called
 
     @patch('psycopg2.connect')

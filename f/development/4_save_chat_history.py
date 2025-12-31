@@ -1,7 +1,5 @@
-import wmill
-import psycopg2
 import json
-from psycopg2.extras import RealDictCursor
+from f.development.utils.db_utils import get_db_connection, check_previous_steps
 
 
 def main(
@@ -17,82 +15,50 @@ def main(
     """
 
     # Check if previous steps succeeded
-    if not context_payload.get("proceed", False):
-        print(f"Step 1 failed: {context_payload.get('reason', 'Unknown error')}")
+    step_error = check_previous_steps(context_payload, llm_result, send_result)
+    if step_error:
         print("Skipping chat history save")
-        return {"success": False, "error": "Cannot save history - Step 1 failed"}
-
-    if "error" in llm_result:
-        print(f"Step 2 failed: {llm_result.get('error', 'Unknown error')}")
-        print("Skipping chat history save")
-        return {"success": False, "error": "Cannot save history - Step 2 failed"}
-
-    # CRITICAL: Don't save to history if Meta API failed to deliver message
-    if not send_result.get("success", False):
-        print(f"Step 3 failed: {send_result.get('error', 'Meta API delivery failed')}")
-        print("Skipping chat history save - message was not delivered to user")
-        return {"success": False, "error": "Cannot save history - Step 3 failed (message not delivered)"}
+        return step_error
 
     contact_id = context_payload["user"]["id"]
     ai_text = llm_result.get("reply_text")
 
-    # Setup DB
-    raw_config = wmill.get_resource(db_resource)
-    db_params = {
-        "host": raw_config.get("host"),
-        "port": raw_config.get("port"),
-        "user": raw_config.get("user"),
-        "password": raw_config.get("password"),
-        "dbname": raw_config.get("dbname"),
-        "sslmode": "disable",
-    }
-
     try:
-        conn = psycopg2.connect(**db_params)
-        cur = conn.cursor()
-
-        # 1. Insert USER Message
-        # We assume this flow ran successfully, so we record the user's input now.
-        # (Alternatively, you could record this at Step 1, but doing it batch here is easier for MVP)
-        cur.execute(
-            """
-            INSERT INTO messages (contact_id, role, content, created_at)
-            VALUES (%s, 'user', %s, NOW())
-        """,
-            (contact_id, user_message),
-        )
-
-        # 2. Insert ASSISTANT Message
-        if ai_text:
+        with get_db_connection(db_resource, use_dict_cursor=False) as (conn, cur):
+            # 1. Insert USER Message
             cur.execute(
                 """
                 INSERT INTO messages (contact_id, role, content, created_at)
-                VALUES (%s, 'assistant', %s, NOW())
-            """,
-                (contact_id, ai_text),
+                VALUES (%s, 'user', %s, NOW())
+                """,
+                (contact_id, user_message),
             )
 
-        # 3. Update User Variables (If LLM extracted new info)
-        # This updates the 'variables' JSONB column merging new data
-        new_vars = llm_result.get("updated_variables")
-        if new_vars:
-            cur.execute(
-                """
-                UPDATE contacts 
-                SET variables = variables || %s 
-                WHERE id = %s
-            """,
-                (json.dumps(new_vars), contact_id),
-            )
+            # 2. Insert ASSISTANT Message
+            if ai_text:
+                cur.execute(
+                    """
+                    INSERT INTO messages (contact_id, role, content, created_at)
+                    VALUES (%s, 'assistant', %s, NOW())
+                    """,
+                    (contact_id, ai_text),
+                )
 
-        conn.commit()
-        return {"success": True}
+            # 3. Update User Variables (If LLM extracted new info)
+            new_vars = llm_result.get("updated_variables")
+            if new_vars:
+                cur.execute(
+                    """
+                    UPDATE contacts
+                    SET variables = variables || %s
+                    WHERE id = %s
+                    """,
+                    (json.dumps(new_vars), contact_id),
+                )
+
+            conn.commit()
+            return {"success": True}
 
     except Exception as e:
         print(f"DB Error: {e}")
         return {"success": False, "error": str(e)}
-    finally:
-        if "cur" in locals():
-            cur.close()
-        if "conn" in locals():
-            conn.close()

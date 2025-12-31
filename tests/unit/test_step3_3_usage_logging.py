@@ -33,7 +33,7 @@ sys.modules['wmill'] = mock_wmill
 import importlib.util
 spec = importlib.util.spec_from_file_location(
     "step5_",
-    os.path.join(os.path.dirname(__file__), '../../f/development/5__log_usage.py')
+    os.path.join(os.path.dirname(__file__), '../../f/development/5_log_usage.py')
 )
 step5__module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(step5__module)
@@ -247,12 +247,12 @@ class TestStep5_UsageLogging:
 
         assert result["success"] is False
         assert "Step 3 failed" in result["error"]
-        assert "message not delivered" in result["error"]
+        assert "WhatsApp API error" in result["error"]
         assert not mock_cursor.execute.called
 
     @patch('psycopg2.connect')
-    def test_database_error_rollback(self, mock_connect):
-        """Test that database errors trigger rollback"""
+    def test_database_error_cleanup(self, mock_connect):
+        """Test that database errors trigger proper cleanup (close)"""
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_connect.return_value = mock_conn
@@ -273,9 +273,10 @@ class TestStep5_UsageLogging:
 
         assert result["success"] is False
         assert "Database constraint violation" in result["error"]
-        
-        # Verify rollback was called
-        assert mock_conn.rollback.called
+
+        # Verify cleanup - connection is closed (implicit rollback in PostgreSQL)
+        assert mock_cursor.close.called
+        assert mock_conn.close.called
 
     @patch('psycopg2.connect')
     def test_usage_summary_upsert(self, mock_connect):

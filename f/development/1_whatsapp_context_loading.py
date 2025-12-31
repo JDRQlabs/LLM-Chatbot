@@ -1,7 +1,7 @@
-import wmill
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import Dict, Any, Optional
+from f.development.utils.db_utils import get_db_params
 
 
 def main(
@@ -13,7 +13,7 @@ def main(
 ) -> Dict[str, Any]:
     """
     Step 1: Context Loading + Idempotency Check + Usage Limits
-    
+
     This step:
     1. Checks for duplicate messages (idempotency)
     2. Validates tenant usage limits
@@ -23,15 +23,7 @@ def main(
     """
 
     # Setup DB Connection
-    raw_config = wmill.get_resource(db_resource)
-    db_params = {
-        "host": raw_config.get("host"),
-        "port": raw_config.get("port"),
-        "user": raw_config.get("user"),
-        "password": raw_config.get("password"),
-        "dbname": raw_config.get("dbname"),
-        "sslmode": "disable",
-    }
+    db_params = get_db_params(db_resource)
 
     try:
         conn = psycopg2.connect(**db_params)
@@ -63,7 +55,7 @@ def main(
             status = existing_event["status"]
             webhook_event_id = existing_event["id"]
 
-            # If already completed, skip (shouldn't happen but handle gracefully)
+            # If already completed, skip (idempotency)
             if status == "completed":
                 print(f"Message already processed: {message_id}")
                 return {
@@ -71,6 +63,24 @@ def main(
                     "reason": "Already Processed",
                     "webhook_event_id": webhook_event_id,
                 }
+
+            # If currently processing, reject (prevent concurrent processing)
+            if status == "processing":
+                print(f"Message currently being processed: {message_id}")
+                return {
+                    "proceed": False,
+                    "reason": "Currently Processing",
+                    "webhook_event_id": webhook_event_id,
+                }
+
+            # If failed, allow retry - update status to processing
+            if status == "failed":
+                print(f"Retrying failed message: {message_id}")
+                cur.execute(
+                    "UPDATE webhook_events SET status = 'processing' WHERE id = %s",
+                    (webhook_event_id,)
+                )
+                conn.commit()
         else:
             # No existing record - Express should have created it
             # Create one as fallback (for backwards compatibility / manual testing)

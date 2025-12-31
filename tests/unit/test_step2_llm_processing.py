@@ -14,6 +14,7 @@ import sys
 import os
 from unittest.mock import Mock, patch, MagicMock
 from collections import namedtuple
+from contextlib import contextmanager
 
 # Add parent directories to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../f/development'))
@@ -306,13 +307,15 @@ class TestStep2LLMProcessing:
         mock_models.generate_content = Mock(return_value=mock_response)
         mock_gemini_client.models = mock_models
 
+        # Create mock context manager for get_db_connection
+        @contextmanager
+        def mock_get_db_connection(*args, **kwargs):
+            yield mock_conn, mock_cursor
+
         # Patch OpenAI in the step2_module namespace
         with patch.object(step2_module, 'OpenAI', return_value=mock_openai_client), \
-             patch.object(step2_module, 'psycopg2') as mock_psycopg2, \
+             patch.object(step2_module, 'get_db_connection', mock_get_db_connection), \
              patch.object(mock_genai, 'Client', return_value=mock_gemini_client):
-
-            # Configure psycopg2 mock
-            mock_psycopg2.connect.return_value = mock_conn
 
             result = step2_main(
                 context_payload={

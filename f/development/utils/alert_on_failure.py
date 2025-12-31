@@ -28,10 +28,10 @@ failure_module:
 """
 
 import wmill
-import psycopg2
 from typing import Dict, Any, Optional
 import json
 import os
+from f.development.utils.db_utils import get_db_connection
 
 
 def main(
@@ -178,61 +178,46 @@ def log_to_database(
         Alert ID or None if failed
     """
     try:
-        raw_config = wmill.get_resource(db_resource)
-        db_params = {
-            "host": raw_config.get("host"),
-            "port": raw_config.get("port"),
-            "user": raw_config.get("user"),
-            "password": raw_config.get("password"),
-            "dbname": raw_config.get("dbname"),
-            "sslmode": "disable",
-        }
+        with get_db_connection(db_resource, use_dict_cursor=False) as (conn, cur):
+            # Get organization_id from chatbot if available
+            organization_id = None
+            if chatbot_id and chatbot_id != "unknown":
+                cur.execute(
+                    "SELECT organization_id FROM chatbots WHERE id = %s",
+                    (chatbot_id,)
+                )
+                result = cur.fetchone()
+                if result:
+                    organization_id = result[0]
 
-        conn = psycopg2.connect(**db_params)
-        cur = conn.cursor()
-
-        # Get organization_id from chatbot if available
-        organization_id = None
-        if chatbot_id and chatbot_id != "unknown":
+            # Insert alert
             cur.execute(
-                "SELECT organization_id FROM chatbots WHERE id = %s",
-                (chatbot_id,)
+                """
+                INSERT INTO system_alerts (
+                    organization_id,
+                    chatbot_id,
+                    type,
+                    severity,
+                    message,
+                    metadata,
+                    created_at
+                ) VALUES (%s, %s, 'WEBHOOK_FAILURE', %s, %s, %s, NOW())
+                RETURNING id
+                """,
+                (
+                    organization_id,
+                    chatbot_id if chatbot_id != "unknown" else None,
+                    severity,
+                    f"Flow step '{step_id}' failed: {error_message}",
+                    json.dumps(metadata)
+                )
             )
-            result = cur.fetchone()
-            if result:
-                organization_id = result[0]
 
-        # Insert alert
-        cur.execute(
-            """
-            INSERT INTO system_alerts (
-                organization_id,
-                chatbot_id,
-                type,
-                severity,
-                message,
-                metadata,
-                created_at
-            ) VALUES (%s, %s, 'WEBHOOK_FAILURE', %s, %s, %s, NOW())
-            RETURNING id
-            """,
-            (
-                organization_id,
-                chatbot_id if chatbot_id != "unknown" else None,
-                severity,
-                f"Flow step '{step_id}' failed: {error_message}",
-                json.dumps(metadata)
-            )
-        )
+            alert_id = cur.fetchone()[0]
+            conn.commit()
 
-        alert_id = cur.fetchone()[0]
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        print(f"Alert logged to database: {alert_id}")
-        return alert_id
+            print(f"Alert logged to database: {alert_id}")
+            return alert_id
 
     except Exception as e:
         print(f"Failed to log alert to database: {e}")

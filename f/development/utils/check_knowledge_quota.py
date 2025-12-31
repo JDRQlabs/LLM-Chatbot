@@ -10,9 +10,8 @@ Called by upload_document.py and web_crawler.py before creating
 new knowledge sources.
 """
 
-import wmill
-import psycopg2
 from typing import Dict, Any
+from f.development.utils.db_utils import get_db_connection
 
 
 def main(
@@ -39,22 +38,7 @@ def main(
             "remaining": int    # how many more can be added
         }
     """
-
-    # Get database credentials
-    raw_config = wmill.get_resource(db_resource)
-    db_params = {
-        "host": raw_config.get("host"),
-        "port": raw_config.get("port"),
-        "user": raw_config.get("user"),
-        "password": raw_config.get("password"),
-        "dbname": raw_config.get("dbname"),
-        "sslmode": "disable",
-    }
-
-    conn = psycopg2.connect(**db_params)
-    cur = conn.cursor()
-
-    try:
+    with get_db_connection(db_resource, use_dict_cursor=False) as (conn, cur):
         # Get organization quota limits and current usage
         cur.execute("""
             SELECT
@@ -146,7 +130,3 @@ def main(
             "max": max_pdfs if source_type in ('pdf', 'doc') else max_urls,
             "remaining": remaining
         }
-
-    finally:
-        cur.close()
-        conn.close()

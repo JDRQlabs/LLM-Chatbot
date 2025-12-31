@@ -1,12 +1,11 @@
 import wmill
 import os
 import json
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from openai import OpenAI
 from google import genai
 from google.genai import types
 from typing import Dict, Any, List, Optional
+from f.development.utils.db_utils import get_db_connection, estimate_tokens
 
 
 def build_tool_instructions(tools: List[Dict]) -> str:
@@ -388,43 +387,19 @@ def retrieve_knowledge(
         query_embedding = response.data[0].embedding
         
         # 2. Search vector database
-        raw_config = wmill.get_resource(db_resource)
-        db_params = {
-            "host": raw_config.get("host"),
-            "port": raw_config.get("port"),
-            "user": raw_config.get("user"),
-            "password": raw_config.get("password"),
-            "dbname": raw_config.get("dbname"),
-            "sslmode": "disable",
-        }
-        
-        conn = psycopg2.connect(**db_params)
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Use the search function we created
-        cur.execute(
-            "SELECT * FROM search_knowledge_base(%s::uuid, %s::vector(1536), %s, %s)",
-            (chatbot_id, query_embedding, top_k, similarity_threshold)
-        )
-        
-        results = cur.fetchall()
-        
-        cur.close()
-        conn.close()
-        
-        return [dict(row) for row in results]
+        with get_db_connection(db_resource) as (conn, cur):
+            # Use the search function we created
+            cur.execute(
+                "SELECT * FROM search_knowledge_base(%s::uuid, %s::vector(1536), %s, %s)",
+                (chatbot_id, query_embedding, top_k, similarity_threshold)
+            )
+
+            results = cur.fetchall()
+            return [dict(row) for row in results]
         
     except Exception as e:
         print(f"RAG retrieval error: {e}")
         return []
-
-
-def estimate_tokens(text: str) -> int:
-    """
-    Rough token estimation: ~4 characters per token.
-    Used as fallback when actual token counts aren't available.
-    """
-    return max(len(text) // 4, 1)
 
 
 # =========================================================================

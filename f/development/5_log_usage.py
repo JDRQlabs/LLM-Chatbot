@@ -1,7 +1,5 @@
-import wmill
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from typing import Dict, Any
+from f.development.utils.db_utils import get_db_connection, check_previous_steps, estimate_tokens
 
 
 def main(
@@ -20,21 +18,10 @@ def main(
     """
 
     # Check if previous steps succeeded
-    if not context_payload.get("proceed", False):
-        print(f"Step 1 failed: {context_payload.get('reason', 'Unknown error')}")
+    step_error = check_previous_steps(context_payload, llm_result, send_result)
+    if step_error:
         print("Skipping usage logging")
-        return {"success": False, "error": "Cannot log usage - Step 1 failed"}
-
-    if "error" in llm_result:
-        print(f"Step 2 failed: {llm_result.get('error', 'Unknown error')}")
-        print("Skipping usage logging")
-        return {"success": False, "error": "Cannot log usage - Step 2 failed"}
-
-    # CRITICAL: Don't charge users for messages that Meta failed to deliver
-    if not send_result.get("success", False):
-        print(f"Step 3 failed: {send_result.get('error', 'Meta API delivery failed')}")
-        print("Skipping usage logging - message was not delivered to user")
-        return {"success": False, "error": "Cannot log usage - Step 3 failed (message not delivered)"}
+        return step_error
 
     # Extract data from previous steps
     org_id = context_payload["chatbot"]["organization_id"]
@@ -53,125 +40,70 @@ def main(
     
     # Fallback: rough estimation if not provided
     if tokens_input == 0 and tokens_output == 0:
-        # Rough estimation: ~4 chars per token
         user_message = llm_result.get("user_message", "")
         reply_text = llm_result.get("reply_text", "")
-        tokens_input = max(len(user_message) // 4, 10)
-        tokens_output = max(len(reply_text) // 4, 10)
-    
+        tokens_input = max(estimate_tokens(user_message), 10)
+        tokens_output = max(estimate_tokens(reply_text), 10)
+
     tokens_total = tokens_input + tokens_output
-    
-    # Cost estimation (simplified, should be updated with actual pricing TBD)
+
+    # Cost estimation
     cost_per_1k_tokens = _get_cost_per_1k_tokens(provider, model_name)
     estimated_cost = (tokens_total / 1000.0) * cost_per_1k_tokens
 
-    # Setup DB connection
-    raw_config = wmill.get_resource(db_resource)
-    db_params = {
-        "host": raw_config.get("host"),
-        "port": raw_config.get("port"),
-        "user": raw_config.get("user"),
-        "password": raw_config.get("password"),
-        "dbname": raw_config.get("dbname"),
-        "sslmode": "disable",
-    }
-
     try:
-        conn = psycopg2.connect(**db_params)
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        # 1. Insert usage log
-        insert_usage = """
-            INSERT INTO usage_logs (
-                organization_id,
-                chatbot_id,
-                contact_id,
-                webhook_event_id,
-                message_count,
-                tokens_input,
-                tokens_output,
-                tokens_total,
-                model_name,
-                provider,
-                estimated_cost_usd,
-                date_bucket
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE
+        with get_db_connection(db_resource) as (conn, cur):
+            # 1. Insert usage log
+            cur.execute(
+                """
+                INSERT INTO usage_logs (
+                    organization_id, chatbot_id, contact_id, webhook_event_id,
+                    message_count, tokens_input, tokens_output, tokens_total,
+                    model_name, provider, estimated_cost_usd, date_bucket
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
+                RETURNING id
+                """,
+                (org_id, chatbot_id, contact_id, webhook_event_id, 1,
+                 tokens_input, tokens_output, tokens_total, model_name,
+                 provider, estimated_cost),
             )
-            RETURNING id
-        """
-        
-        cur.execute(
-            insert_usage,
-            (
-                org_id,
-                chatbot_id,
-                contact_id,
-                webhook_event_id,
-                1,  # message_count
-                tokens_input,
-                tokens_output,
-                tokens_total,
-                model_name,
-                provider,
-                estimated_cost,
-            ),
-        )
-        
-        usage_log_id = cur.fetchone()["id"]
+            usage_log_id = cur.fetchone()["id"]
 
-        # 2. Update usage summary (for quick limit checks)
-        update_summary = """
-            INSERT INTO usage_summary (
-                organization_id,
-                current_period_messages,
-                current_period_tokens,
-                period_start,
-                period_end,
-                last_updated_at
+            # 2. Update usage summary (for quick limit checks)
+            cur.execute(
+                """
+                INSERT INTO usage_summary (
+                    organization_id, current_period_messages, current_period_tokens,
+                    period_start, period_end, last_updated_at
+                )
+                SELECT %s, 1, %s, billing_period_start, billing_period_end, NOW()
+                FROM organizations WHERE id = %s
+                ON CONFLICT (organization_id)
+                DO UPDATE SET
+                    current_period_messages = usage_summary.current_period_messages + 1,
+                    current_period_tokens = usage_summary.current_period_tokens + %s,
+                    last_updated_at = NOW()
+                """,
+                (org_id, tokens_total, org_id, tokens_total)
             )
-            SELECT 
-                %s,
-                1,
-                %s,
-                billing_period_start,
-                billing_period_end,
-                NOW()
-            FROM organizations
-            WHERE id = %s
-            ON CONFLICT (organization_id) 
-            DO UPDATE SET
-                current_period_messages = usage_summary.current_period_messages + 1,
-                current_period_tokens = usage_summary.current_period_tokens + %s,
-                last_updated_at = NOW()
-        """
-        
-        cur.execute(update_summary, (org_id, tokens_total, org_id, tokens_total))
 
-        conn.commit()
+            conn.commit()
 
-        return {
-            "success": True,
-            "usage_log_id": usage_log_id,
-            "tokens_used": tokens_total,
-            "estimated_cost": float(estimated_cost),
-            "message_count": 1,
-        }
+            return {
+                "success": True,
+                "usage_log_id": usage_log_id,
+                "tokens_used": tokens_total,
+                "estimated_cost": float(estimated_cost),
+                "message_count": 1,
+            }
 
     except Exception as e:
         print(f"Usage Logging Error: {e}")
-        if conn:
-            conn.rollback()
         return {
             "success": False,
             "error": str(e),
-            "tokens_used": tokens_total,  # Still report even if logging failed
+            "tokens_used": tokens_total,
         }
-    finally:
-        if "cur" in locals():
-            cur.close()
-        if "conn" in locals():
-            conn.close()
 
 
 def _get_cost_per_1k_tokens(provider: str, model: str) -> float:
@@ -215,11 +147,3 @@ def _get_cost_per_1k_tokens(provider: str, model: str) -> float:
     
     # Fallback: conservative estimate
     return 0.001  # $1 per million tokens
-
-
-def estimate_tokens_from_text(text: str) -> int:
-    """
-    Rough token estimation: ~4 characters per token.
-    This is a simplified heuristic - in production, use tiktoken or similar.
-    """
-    return max(len(text) // 4, 1)

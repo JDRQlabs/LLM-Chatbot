@@ -5,10 +5,11 @@ Tests the check_knowledge_quota.py utility with all quota limit scenarios.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 import sys
 import importlib.util
 from pathlib import Path
+from contextlib import contextmanager
 
 # ============================================================================
 # MOCK WMILL MODULE BEFORE IMPORTING MODULE UNDER TEST
@@ -26,6 +27,29 @@ spec.loader.exec_module(check_knowledge_quota_module)
 
 # Get the main function
 check_quota = check_knowledge_quota_module.main
+
+
+def create_mock_db_connection(mock_db_resource):
+    """Create a mock context manager for get_db_connection that uses real DB."""
+    @contextmanager
+    def mock_get_db_connection(db_resource=None, use_dict_cursor=True):
+        import psycopg2
+        db_params = {
+            "host": mock_db_resource["host"],
+            "port": mock_db_resource["port"],
+            "user": mock_db_resource["user"],
+            "password": mock_db_resource["password"],
+            "dbname": mock_db_resource["dbname"],
+            "sslmode": "disable",
+        }
+        conn = psycopg2.connect(**db_params)
+        cur = conn.cursor()
+        try:
+            yield conn, cur
+        finally:
+            cur.close()
+            conn.close()
+    return mock_get_db_connection
 
 
 @pytest.mark.unit
@@ -78,10 +102,9 @@ class TestQuotaEnforcement:
             quota_data["org_id"]
         ))
 
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="pdf",
@@ -110,9 +133,9 @@ class TestQuotaEnforcement:
             quota_data["org_id"]
         ))
 
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
 
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
@@ -142,9 +165,9 @@ class TestQuotaEnforcement:
             quota_data["org_id"]
         ))
 
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
 
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
@@ -174,9 +197,9 @@ class TestQuotaEnforcement:
             quota_data["org_id"]
         ))
 
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
 
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
@@ -213,9 +236,9 @@ class TestQuotaEnforcement:
             quota_data["max_daily_ingestions"]
         ))
 
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
 
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
@@ -233,9 +256,9 @@ class TestQuotaEnforcement:
 
     def test_chatbot_not_found(self, mock_db_resource):
         """Test error handling for non-existent chatbot."""
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
 
             result = check_quota(
                 chatbot_id="00000000-0000-0000-0000-000000000000",
@@ -261,9 +284,9 @@ class TestQuotaEnforcement:
             WHERE id = %s
         """, (maximum, current, quota_data["org_id"]))
 
-        # Execute: Mock wmill.get_resource and call check_quota
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
+        # Execute: Mock get_db_connection and call check_quota
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
 
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
@@ -291,9 +314,8 @@ class TestQuotaEnforcement:
         ))
 
         # Execute: Test 1 - 0.5MB file should be allowed
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="pdf",
@@ -303,9 +325,8 @@ class TestQuotaEnforcement:
         assert result["allowed"] is True
 
         # Execute: Test 2 - 1.5MB file should be blocked
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="pdf",
@@ -327,9 +348,8 @@ class TestQuotaEnforcement:
         """)
 
         # Execute: Test free tier chatbot
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="pdf",
@@ -357,9 +377,8 @@ class TestQuotaEnforcement:
         ))
 
         # Execute: Check quota for 'doc' type
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="doc",
@@ -387,9 +406,8 @@ class TestQuotaEnforcement:
         ))
 
         # Execute: Check quota for unknown type
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="unknown_type",
@@ -416,9 +434,8 @@ class TestQuotaEnforcement:
         ))
 
         # Execute: Check quota for URL
-        with patch.object(check_knowledge_quota_module, 'wmill') as mock_wmill_call:
-            mock_wmill_call.get_resource.return_value = mock_db_resource
-
+        with patch.object(check_knowledge_quota_module, 'get_db_connection',
+                          create_mock_db_connection(mock_db_resource)):
             result = check_quota(
                 chatbot_id="22222222-2222-2222-2222-222222222222",
                 source_type="url",
