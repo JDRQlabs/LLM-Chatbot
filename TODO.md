@@ -121,15 +121,17 @@ graph TD
 ### Implementation Checklist
 
 #### Infrastructure Setup
-- [ ] Create Hetzner Volume (10GB) named `whatsapp-data` in Hetzner panel
-  - Run: `cd deployment && make volume-create`
+- [x] Create Hetzner Volume (10GB) named `whatsapp-data` in Hetzner panel
+  - ✅ Volume created and attached to CX23 VM
 - [x] Update `cloud-init.yaml` to mount volume at `/mnt/data`
   - [x] Add volume mount commands to `runcmd` section
   - [x] Create directories: `/mnt/data/postgres`, `/mnt/data/redis`
   - [x] Add to `/etc/fstab` for persistence
-- [ ] Provision CPX31 VM using existing Makefile/scripts
-  - Run: `cd deployment && make up` (then `make volume-attach`)
-- [ ] Verify volume is mounted correctly after VM boot
+- [x] Provision VM using existing Makefile/scripts
+  - ✅ CX23 VM deployed on Hetzner
+  - ✅ Volume attached and mounted
+- [x] Verify volume is mounted correctly after VM boot
+  - ✅ Verified on production server
 
 #### Docker Compose Configuration
 - [x] Create `docker-compose.phase0.yml` (production-optimized)
@@ -142,7 +144,10 @@ graph TD
   - [x] Configure Windmill Server: `MODE=server`, `NUM_WORKERS=0`
   - [x] Configure Windmill Worker: `MODE=worker`, `NUM_WORKERS=10`, `WORKER_GROUP=default`
 - [ ] Test docker-compose.phase0.yml locally (if possible)
-- [ ] Deploy to production VM
+  - **Note**: Port conflicts may occur if other containers use ports 3000, 4000, 8000
+  - **Fix**: Stop conflicting containers or use different ports for local testing
+- [x] Deploy to production VM
+  - ✅ Deployed to CX23 VM on Hetzner
 
 #### Code Changes: Idempotency Check
 - [x] Update `webhook-server/app.js`:

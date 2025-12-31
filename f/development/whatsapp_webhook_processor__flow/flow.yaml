@@ -30,6 +30,9 @@ value:
           context_payload:
             type: javascript
             expr: results.step1
+          db_resource:
+            type: static
+            value: f/development/business_layer_db_postgreSQL
           default_provider:
             type: static
             value: google
@@ -62,8 +65,6 @@ value:
         path: f/development/3_1_send_reply_to_whatsapp
     - id: step4
       summary: Save chat history to database
-      skip_if:
-        expr: '!results.step3.success'
       value:
         type: script
         input_transforms:
@@ -76,83 +77,94 @@ value:
           llm_result:
             type: javascript
             expr: results.step2
+          send_result:
+            type: javascript
+            expr: results.step3
           user_message:
             type: javascript
             expr: flow_input.message_body
-          send_result:
-            type: javascript
-            expr: results.step3
         is_trigger: false
-        path: f/development/4__save_chat_history
-    - id: step5
-      summary: Log usage for billing and analytics
+        path: f/development/4_save_chat_history
       skip_if:
         expr: '!results.step3.success'
+    - id: a
       value:
         type: script
         input_transforms:
           context_payload:
             type: javascript
             expr: results.step1
+          db_resource:
+            type: static
+            value: f/development/business_layer_db_postgreSQL
           llm_result:
             type: javascript
             expr: results.step2
-          db_resource:
-            type: static
-            value: f/development/business_layer_db_postgreSQL
           send_result:
             type: javascript
             expr: results.step3
+          webhook_event_id:
+            type: javascript
+            expr: ''
         is_trigger: false
-        path: f/development/5__log_usage
+        path: f/development/5_log_usage
     - id: step6
-      summary: Alert admin on LLM errors (rate limits, quota exceeded, etc.)
-      skip_if:
-        expr: '!results.step2.usage_info || !results.step2.usage_info.error'
+      summary: 'Alert admin on LLM errors (rate limits, quota exceeded, etc.)'
       value:
         type: script
         input_transforms:
-          error_message:
-            type: javascript
-            expr: results.step2.usage_info.error
-          step_id:
-            type: static
-            value: step2
-          error_name:
-            type: javascript
-            expr: "results.step2.usage_info.is_limit_error ? 'RATE_LIMIT_ERROR' : 'LLM_ERROR'"
           chatbot_id:
             type: javascript
             expr: results.step1.chatbot.id
-          user_phone:
-            type: javascript
-            expr: flow_input.user_phone
           db_resource:
             type: static
             value: f/development/business_layer_db_postgreSQL
+          error_message:
+            type: javascript
+            expr: results.step2.usage_info.error
+          error_name:
+            type: javascript
+            expr: >-
+              results.step2.usage_info.is_limit_error ? 'RATE_LIMIT_ERROR' :
+              'LLM_ERROR'
+          slack_webhook_url:
+            type: static
+            value: <function call>
+          step_id:
+            type: static
+            value: step2
+          user_phone:
+            type: javascript
+            expr: flow_input.user_phone
         is_trigger: false
         path: f/development/utils/alert_on_failure
+      skip_if:
+        expr: '!results.step2.usage_info || !results.step2.usage_info.error'
   failure_module:
     id: failure
     value:
       type: script
-      path: f/development/utils/alert_on_failure
       input_transforms:
-        error_message:
-          type: javascript
-          expr: error.message
-        step_id:
-          type: javascript
-          expr: error.step_id
-        error_name:
-          type: javascript
-          expr: error.name
         chatbot_id:
           type: javascript
           expr: flow_input.phone_number_id || 'unknown'
+        db_resource:
+          type: static
+        error_message:
+          type: javascript
+          expr: error.message
+        error_name:
+          type: javascript
+          expr: error.name
+        slack_webhook_url:
+          type: static
+        step_id:
+          type: javascript
+          expr: error.step_id
         user_phone:
           type: javascript
           expr: flow_input.user_phone || 'unknown'
+      path: f/development/utils/alert_on_failure
 schema:
   $schema: 'https://json-schema.org/draft/2020-12/schema'
   type: object

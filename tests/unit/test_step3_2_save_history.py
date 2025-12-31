@@ -34,9 +34,9 @@ spec = importlib.util.spec_from_file_location(
     "step4_",
     os.path.join(os.path.dirname(__file__), '../../f/development/4_save_chat_history.py')
 )
-step4__module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(step4__module)
-step4__main = step4__module.main
+step4_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(step4_module)
+step4_main = step4_module.main
 
 
 class TestStep4_SaveHistory:
@@ -51,7 +51,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -93,7 +93,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -128,7 +128,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": False,  # Step 1 failed
                 "reason": "Chatbot not found"
@@ -153,7 +153,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -177,7 +177,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -201,7 +201,7 @@ class TestStep4_SaveHistory:
         # Simulate connection failure
         mock_connect.side_effect = Exception("Connection refused")
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -225,7 +225,7 @@ class TestStep4_SaveHistory:
         # Simulate INSERT failure
         mock_cursor.execute.side_effect = Exception("Foreign key constraint violation")
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-999"}  # Non-existent contact
@@ -246,7 +246,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -276,7 +276,7 @@ class TestStep4_SaveHistory:
         mock_connect.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}
@@ -304,7 +304,7 @@ class TestStep4_SaveHistory:
 
         contact_id = "contact-abc-123"
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": contact_id}
@@ -337,7 +337,7 @@ class TestStep4_SaveHistory:
         # Simulate error during execution
         mock_cursor.execute.side_effect = Exception("Test error")
 
-        result = step4__main(
+        result = step4_main(
             context_payload={
                 "proceed": True,
                 "user": {"id": "contact-123"}

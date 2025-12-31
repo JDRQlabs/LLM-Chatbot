@@ -1,4 +1,4 @@
-summary: 4__save chat history
+summary: 4_save chat history
 description: ''
 lock: '!inline f/development/4_save_chat_history.script.lock'
 kind: script

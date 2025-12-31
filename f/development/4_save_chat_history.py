@@ -1,5 +1,7 @@
+import wmill  # Required for get_db_connection to access Windmill resources
 import json
-from f.development.utils.db_utils import get_db_connection, check_previous_steps
+from f.development.utils.db_utils import get_db_connection
+from f.development.utils.flow_utils import check_previous_steps
 
 
 def main(

@@ -1,3 +1,4 @@
+import wmill  # Required for get_db_params to access Windmill resources
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import Dict, Any, Optional

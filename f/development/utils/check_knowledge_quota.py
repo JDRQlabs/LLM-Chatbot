@@ -10,6 +10,7 @@ Called by upload_document.py and web_crawler.py before creating
 new knowledge sources.
 """
 
+import wmill  # Required for get_db_connection to access Windmill resources
 from typing import Dict, Any
 from f.development.utils.db_utils import get_db_connection
 

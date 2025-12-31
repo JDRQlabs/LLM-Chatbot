@@ -19,8 +19,8 @@ tests/
 │   ├── test_step1_context_loading.py
 │   ├── test_step2_llm_processing.py
 │   ├── test_step3_1_send_reply.py
-│   ├── test_step4__save_history.py
-│   └── test_step5__usage_logging.py
+│   ├── test_step4_save_history.py
+│   └── test_step4_usage_logging.py
 ├── integration/                        # Integration tests
 │   ├── test_full_flow.py
 │   └── test_database_operations.py

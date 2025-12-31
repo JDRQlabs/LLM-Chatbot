@@ -5,7 +5,8 @@ from openai import OpenAI
 from google import genai
 from google.genai import types
 from typing import Dict, Any, List, Optional
-from f.development.utils.db_utils import get_db_connection, estimate_tokens
+from f.development.utils.db_utils import get_db_connection
+from f.development.utils.flow_utils import estimate_tokens
 
 
 def build_tool_instructions(tools: List[Dict]) -> str:
@@ -396,10 +397,73 @@ def retrieve_knowledge(
 
             results = cur.fetchall()
             return [dict(row) for row in results]
-        
+
     except Exception as e:
         print(f"RAG retrieval error: {e}")
         return []
+
+
+def sanitize_gemini_parameters(params: dict) -> dict:
+    """
+    Clean up JSON Schema parameters for Gemini API compatibility.
+
+    Gemini's function calling only accepts standard JSON Schema fields.
+    Fields like 'additional_properties', 'additionalProperties', etc.
+    that may come from Pydantic models or other sources must be removed.
+
+    Args:
+        params: Original parameters dict
+
+    Returns:
+        Cleaned parameters dict safe for Gemini API
+    """
+    if not params or not isinstance(params, dict):
+        return {"type": "object", "properties": {}}
+
+    # Fields that are valid in JSON Schema for Gemini
+    valid_fields = {
+        "type", "properties", "required", "description",
+        "enum", "items", "minimum", "maximum", "minLength",
+        "maxLength", "pattern", "format", "default"
+    }
+
+    def clean_dict(d: dict) -> dict:
+        if not isinstance(d, dict):
+            return d
+
+        cleaned = {}
+        for key, value in d.items():
+            # Skip invalid fields at any level
+            if key.lower().replace("_", "") in {"additionalproperties", "additionalitems"}:
+                continue
+            if key not in valid_fields and key != "properties":
+                # For non-standard fields at root level, skip them
+                # But keep 'properties' as it contains nested schemas
+                if isinstance(value, dict) and "type" in value:
+                    # This looks like a property definition, keep it
+                    cleaned[key] = clean_dict(value)
+                elif key in valid_fields:
+                    cleaned[key] = value if not isinstance(value, dict) else clean_dict(value)
+                continue
+
+            if isinstance(value, dict):
+                cleaned[key] = clean_dict(value)
+            elif isinstance(value, list):
+                cleaned[key] = [clean_dict(item) if isinstance(item, dict) else item for item in value]
+            else:
+                cleaned[key] = value
+
+        return cleaned
+
+    result = clean_dict(params)
+
+    # Ensure minimum required structure
+    if "type" not in result:
+        result["type"] = "object"
+    if "properties" not in result:
+        result["properties"] = {}
+
+    return result
 
 
 # =========================================================================
@@ -690,11 +754,13 @@ def execute_agent_loop_gemini(
     for tool in tools:
         if "function" in tool:
             func = tool["function"]
+            # Sanitize parameters to remove non-standard JSON Schema fields
+            clean_params = sanitize_gemini_parameters(func.get("parameters", {}))
             function_declarations.append(
                 types.FunctionDeclaration(
                     name=func["name"],
                     description=func.get("description", ""),
-                    parameters=func.get("parameters", {})
+                    parameters=clean_params
                 )
             )
 

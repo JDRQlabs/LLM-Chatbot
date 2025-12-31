@@ -1,5 +1,7 @@
+import wmill  # Required for get_db_connection to access Windmill resources
 from typing import Dict, Any
-from f.development.utils.db_utils import get_db_connection, check_previous_steps, estimate_tokens
+from f.development.utils.db_utils import get_db_connection
+from f.development.utils.flow_utils import check_previous_steps, estimate_tokens
 
 
 def main(

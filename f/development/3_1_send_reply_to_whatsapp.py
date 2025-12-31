@@ -1,6 +1,6 @@
 import requests
 import json
-from f.development.utils.db_utils import check_previous_steps
+from f.development.utils.flow_utils import check_previous_steps
 
 
 def main(
