@@ -1,2 +1,5 @@
 .env
 *.pyc
+
+#from local-gitingest:
+output.txt
