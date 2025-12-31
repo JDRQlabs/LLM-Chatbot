@@ -7,7 +7,12 @@
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+// SECURITY: JWT_SECRET must be explicitly set - no fallback allowed
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required but not set');
+  process.exit(1);
+}
 const JWT_EXPIRATION = '24h';
 
 // Database connection pool

@@ -20,10 +20,34 @@ const SALT_ROUNDS = 12;
  * POST /api/auth/register
  * Register a new user and organization
  *
+ * SECURITY: Public registration is DISABLED in Phase 0.
+ * Admin accounts must be created via SSH using: make create-admin
+ *
+ * Phase 1 will implement email verification + admin approval workflow.
+ * See TODO.md for details.
+ *
  * Body: { email, password, fullName, organizationName }
  * Returns: { token, user, organization }
  */
 router.post('/register',
+  // Rate limiting
+  authLimiter,
+
+  async (req, res) => {
+    // SECURITY: Public registration disabled for Phase 0
+    // Use `make create-admin EMAIL=... PASSWORD=...` via SSH instead
+    return res.status(403).json({
+      error: 'Public registration is disabled',
+      message: 'Contact an administrator to create an account'
+    });
+  }
+);
+
+/**
+ * DISABLED - Original registration implementation
+ * TODO: Re-enable with email verification in Phase 1
+ */
+const _disabledRegister = router.post('/register-disabled',
   // Rate limiting
   authLimiter,
   // Validation

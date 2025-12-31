@@ -301,15 +301,27 @@ router.get('/:id/knowledge/sources', verifyToken, verifyChatbotOwnership, async 
 
     const result = await pool.query(query, params);
 
-    // Get total count
-    const countQuery = `
+    // Get total count (using parameterized queries to prevent SQL injection)
+    let countQuery = `
       SELECT COUNT(*) as total
       FROM knowledge_sources
       WHERE chatbot_id = $1
-      ${status ? `AND status = '${status}'` : ''}
-      ${sourceType ? `AND source_type = '${sourceType}'` : ''}
     `;
-    const countResult = await pool.query(countQuery, [chatbotId]);
+    const countParams = [chatbotId];
+    let countParamIndex = 2;
+
+    if (status) {
+      countQuery += ` AND sync_status = $${countParamIndex}`;
+      countParams.push(status);
+      countParamIndex++;
+    }
+
+    if (sourceType) {
+      countQuery += ` AND source_type = $${countParamIndex}`;
+      countParams.push(sourceType);
+    }
+
+    const countResult = await pool.query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
 
     res.json({

@@ -132,7 +132,7 @@ graph TD
 - [ ] Verify volume is mounted correctly after VM boot
 
 #### Docker Compose Configuration
-- [x] Create `docker-compose.prod.yml` (production-optimized)
+- [x] Create `docker-compose.phase0.yml` (production-optimized)
   - [x] Remove `lsp` service (not needed in production)
   - [x] Remove `multiplayer` service (not needed in production)
   - [x] Remove `windmill_worker_native` (consolidate into standard worker)
@@ -141,7 +141,7 @@ graph TD
   - [x] Set Postgres memory limit to 1GB (prevents OOM)
   - [x] Configure Windmill Server: `MODE=server`, `NUM_WORKERS=0`
   - [x] Configure Windmill Worker: `MODE=worker`, `NUM_WORKERS=10`, `WORKER_GROUP=default`
-- [ ] Test docker-compose.prod.yml locally (if possible)
+- [ ] Test docker-compose.phase0.yml locally (if possible)
 - [ ] Deploy to production VM
 
 #### Code Changes: Idempotency Check
@@ -308,7 +308,7 @@ graph TD
 ##### MCP Server Deployment
 
 **Docker Compose Configuration:**
-- [x] Add MCP services to `docker-compose.prod.yml`:
+- [x] Add MCP services to `docker-compose.phase0.yml`:
   ```yaml
   mcp_pricing_calculator:
     build: ./mcp-servers/pricing-calculator
@@ -344,7 +344,7 @@ graph TD
 ##### Reverse Proxy Configuration
 
 **Caddy/Nginx Setup:**
-- [x] Install Caddy or Nginx on host (or run in Docker) - Caddy in docker-compose.prod.yml
+- [x] Install Caddy or Nginx on host (or run in Docker) - Caddy in docker-compose.phase0.yml
 - [x] Configure reverse proxy routing:
   - [x] `/api/*` → `whatsapp_chatbot_api` container (port 4000)
   - [x] `/webhook*` → `webhook-ingress` container (port 3000)
@@ -479,7 +479,7 @@ graph TD
 - [ ] Set up SSL certificates on load balancer
 
 #### Service Separation
-- [ ] Update `docker-compose.prod.yml`:
+- [ ] Update `docker-compose.phase0.yml`:
   - [ ] Split into `docker-compose.api.yml` (API nodes)
   - [ ] Split into `docker-compose.windmill-core.yml` (Core node)
   - [ ] Split into `docker-compose.windmill-worker.yml` (Worker nodes)
@@ -500,8 +500,44 @@ graph TD
 #### Connection Pooling
 - [ ] Install PgBouncer for Windmill workers
 - [ ] Configure connection pooling (transaction mode)
-- [ ] Set pool size: 25 connections per worker node
-- [ ] Monitor connection pool usage
+
+#### Security Enhancements (Phase 1)
+**Registration & Authentication:**
+- [ ] Implement email verification for new registrations
+  - [ ] Add `email_verified` column to users table
+  - [ ] Create `email_verification_tokens` table
+  - [ ] Add email sending service (SendGrid, SES, etc.)
+  - [ ] Create `/api/auth/verify-email` endpoint
+  - [ ] Block login until email is verified
+- [ ] Implement admin approval workflow for new organizations
+  - [ ] Add `approval_status` column to organizations table (pending/approved/rejected)
+  - [ ] Create admin dashboard for reviewing pending registrations
+  - [ ] Add notification to admin when new registration received
+- [ ] Re-enable public registration with email verification
+  - [ ] Update `/api/auth/register` to require email verification
+  - [ ] Auto-approve or require manual approval based on plan tier
+
+**Password Security:**
+- [ ] Add password complexity requirements (12+ chars, uppercase, lowercase, numbers)
+- [ ] Implement password reset flow
+  - [ ] Create `/api/auth/forgot-password` endpoint
+  - [ ] Create `/api/auth/reset-password` endpoint
+  - [ ] Add password reset tokens table
+- [ ] Add account lockout after 5 failed login attempts
+  - [ ] Track failed attempts per email (not just IP)
+  - [ ] Implement progressive delays or CAPTCHA
+
+**Role-Based Access Control (RBAC):**
+- [ ] Add `requireRole()` middleware to API routes
+- [ ] Implement user management endpoints (owner can add/remove team members)
+- [ ] Add role hierarchy (owner > admin > member)
+- [ ] Audit log for sensitive operations
+
+**Additional Security:**
+- [ ] Add 2FA/MFA support (optional for users)
+- [ ] Implement session management and token revocation
+- [ ] Add security headers middleware (helmet)
+- [ ] Encrypt sensitive data at rest (API tokens, credentials)
 
 #### Monitoring & Alerting
 - [ ] Set up Prometheus on dedicated monitoring node (or use managed)

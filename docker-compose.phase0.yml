@@ -1,9 +1,10 @@
 version: "3.7"
 
-# Production Docker Compose for Phase 0 (Single CPX31 VM)
-# - Optimized for 4 vCPU, 8GB RAM
+# Production Docker Compose for Phase 0 (Single VM - all services)
+# - Compatible with cx23 (2 vCPU, 4GB RAM) up to cpx31 (4 vCPU, 8GB RAM)
 # - Uses mounted volume at /mnt/data for persistence
 # - MCP servers on internal network only (not exposed to public)
+# - CPU/memory limits configured for minimum spec (cx23)
 
 x-logging: &default-logging
   driver: "json-file"
@@ -129,7 +130,7 @@ services:
       - DATABASE_URL=${WINDMILL_DATABASE_URL}
       - MODE=worker
       - WORKER_GROUP=default
-      - NUM_WORKERS=10
+      - NUM_WORKERS=${WINDMILL_NUM_WORKERS:-4}
     depends_on:
       db:
         condition: service_healthy
@@ -143,8 +144,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "3"
-          memory: 4096M
+          cpus: "${WINDMILL_CPU_LIMIT:-1.5}"
+          memory: ${WINDMILL_MEMORY_LIMIT:-2048M}
     logging: *default-logging
 
   # =============================================================================
@@ -155,11 +156,14 @@ services:
     build: ./webhook-server
     container_name: webhook-ingress
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # SECURITY: Internal only - access via Caddy reverse proxy on port 80/443
+    # Removed: ports: - "3000:3000" (was bypassing Caddy SSL/TLS)
+    expose:
+      - 3000
     environment:
       - PORT=3000
       - WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN}
+      - META_APP_SECRET=${META_APP_SECRET}
       - WINDMILL_TOKEN=${WINDMILL_TOKEN}
       - WINDMILL_MESSAGE_PROCESSING_ENDPOINT=${WINDMILL_MESSAGE_PROCESSING_ENDPOINT}
       - DB_HOST=business_logic_db
@@ -186,8 +190,10 @@ services:
     build: ./api-server
     container_name: whatsapp_chatbot_api
     restart: unless-stopped
-    ports:
-      - "4000:4000"
+    # SECURITY: Internal only - access via Caddy reverse proxy on port 80/443
+    # Removed: ports: - "4000:4000" (was bypassing Caddy SSL/TLS)
+    expose:
+      - 4000
     environment:
       - PORT=4000
       - NODE_ENV=production
@@ -311,7 +317,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile.prod:/etc/caddy/Caddyfile
+      - ./Caddyfile.phase0:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

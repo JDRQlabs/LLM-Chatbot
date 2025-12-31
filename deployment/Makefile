@@ -34,7 +34,7 @@ SERVER_ID := $(shell hcloud server list -o noheader -o columns=id,name | awk '$$
 VOLUME_ID := $(shell hcloud volume list -o noheader -o columns=id,name | awk '$$2=="$(HETZNER_VOLUME_NAME)" {print $$1}')
 CLOUD_INIT := cloud-init.yaml
 
-.PHONY: up down status ip ssh deploy logs labels $(CLOUD_INIT) volume-create volume-attach volume-detach
+.PHONY: up down status ip ssh deploy logs labels $(CLOUD_INIT) volume-create volume-attach volume-detach volume-setup start-prod stop-prod logs-prod healthcheck db-init db-reset ps restart-service full-deploy create-admin
 
 # Always regenerate cloud-init.yaml to pick up .env changes
 $(CLOUD_INIT):
@@ -82,6 +82,24 @@ volume-detach:
 	fi; \
 	echo "Detaching volume $(VOLUME_ID)..."; \
 	hcloud volume detach $(VOLUME_ID)
+
+volume-setup: validate
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Setting up volume directories on $$IP..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP '\
+		set -e && \
+		VOLUME_PATH=$$(ls -d /mnt/HC_Volume_* 2>/dev/null | head -1) && \
+		if [ -z "$$VOLUME_PATH" ]; then echo "ERROR: No volume found"; exit 1; fi && \
+		sudo ln -sf $$VOLUME_PATH /mnt/data && \
+		sudo mkdir -p /mnt/data/postgres/windmill /mnt/data/postgres/business_logic /mnt/data/redis && \
+		sudo chown -R 999:999 /mnt/data/postgres /mnt/data/redis && \
+		sudo chmod -R 700 /mnt/data/postgres && \
+		echo "Volume setup complete:" && ls -la /mnt/data/ \
+	'
 
 # ---- Server Management ----
 up: validate $(CLOUD_INIT)
@@ -173,7 +191,7 @@ start-prod: validate
 	fi; \
 	echo "Starting production services on $$IP..."; \
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
-		"cd ~/src && docker compose -f docker-compose.prod.yml up -d"
+		"cd ~/src && docker compose -f docker-compose.phase0.yml up -d"
 
 stop-prod: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
@@ -183,7 +201,7 @@ stop-prod: validate
 	fi; \
 	echo "Stopping production services on $$IP..."; \
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
-		"cd ~/src && docker compose -f docker-compose.prod.yml down"
+		"cd ~/src && docker compose -f docker-compose.phase0.yml down"
 
 logs-prod: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
@@ -192,4 +210,140 @@ logs-prod: validate
 		exit 1; \
 	fi; \
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
-		"cd ~/src && docker compose -f docker-compose.prod.yml logs -f"
+		"cd ~/src && docker compose -f docker-compose.phase0.yml logs -f"
+
+# Health check for all services
+healthcheck: validate
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	WEBHOOK_VERIFY_TOKEN="$(WEBHOOK_VERIFY_TOKEN)" \
+	WINDMILL_AUTH_USER="$(WINDMILL_AUTH_USER)" \
+	WINDMILL_AUTH_PASS="$(WINDMILL_AUTH_PASS)" \
+	./scripts/healthcheck.sh $$IP
+
+# Initialize database schema and seed data
+db-init: validate
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Initializing database on $$IP..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP '\
+		cd ~/src && \
+		echo "Creating schema..." && \
+		docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < db/create.sql && \
+		echo "Seeding data..." && \
+		source .env && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
+		echo "Database initialized successfully!" \
+	'
+
+# Reset database (drop and recreate)
+db-reset: validate
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "WARNING: This will DELETE all data in the database!"; \
+	read -p "Are you sure? (y/n) " confirm && [ "$$confirm" = "y" ] && \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP '\
+		cd ~/src && \
+		echo "Dropping tables..." && \
+		docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < db/drop.sql && \
+		echo "Creating schema..." && \
+		docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < db/create.sql && \
+		echo "Seeding data..." && \
+		source .env && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
+		echo "Database reset complete!" \
+	'
+
+# Container status
+ps: validate
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
+		"docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
+
+# Restart a specific service
+restart-service: validate
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make restart-service SERVICE=<service_name>"; \
+		echo "Available services: caddy, webhook-ingress, whatsapp_chatbot_api, windmill_server, windmill_worker, business_logic_db, redis"; \
+		exit 1; \
+	fi; \
+	IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Restarting $(SERVICE) on $$IP..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
+		"cd ~/src && docker compose -f docker-compose.phase0.yml restart $(SERVICE)"
+
+# Full deployment workflow
+full-deploy: deploy volume-setup start-prod healthcheck
+	@echo "Full deployment complete!"
+
+# Create admin user (for Phase 0 - registration is disabled)
+# Usage: make create-admin EMAIL=admin@example.com PASSWORD=secure-password ORG_NAME="My Organization"
+create-admin: validate
+	@if [ -z "$(EMAIL)" ] || [ -z "$(PASSWORD)" ]; then \
+		echo "Usage: make create-admin EMAIL=admin@example.com PASSWORD=secure-password ORG_NAME=\"My Organization\""; \
+		echo ""; \
+		echo "Arguments:"; \
+		echo "  EMAIL     - Admin email address (required)"; \
+		echo "  PASSWORD  - Admin password, min 8 characters (required)"; \
+		echo "  ORG_NAME  - Organization name (optional, defaults to 'Default Organization')"; \
+		exit 1; \
+	fi; \
+	IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	ORG="$${ORG_NAME:-Default Organization}"; \
+	echo "Creating admin user on $$IP..."; \
+	echo "  Email: $(EMAIL)"; \
+	echo "  Organization: $$ORG"; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP " \
+		docker exec whatsapp_chatbot_api node -e \" \
+			const bcrypt = require('bcrypt'); \
+			const { Pool } = require('pg'); \
+			const pool = new Pool({ \
+				host: 'business_logic_db', \
+				port: 5432, \
+				user: process.env.DB_USER || 'business_logic_user', \
+				password: process.env.DB_PASSWORD || 'business_logic_password', \
+				database: process.env.DB_NAME || 'business_logic_app' \
+			}); \
+			async function createAdmin() { \
+				const client = await pool.connect(); \
+				try { \
+					await client.query('BEGIN'); \
+					const orgSlug = '$$ORG'.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50) + '-' + Date.now().toString(36); \
+					const org = await client.query('INSERT INTO organizations (name, slug, plan_tier, is_active) VALUES (\\\$$1, \\\$$2, \\\"pro\\\", TRUE) RETURNING id', ['$$ORG', orgSlug]); \
+					const hash = await bcrypt.hash('$(PASSWORD)', 12); \
+					await client.query('INSERT INTO users (organization_id, email, password_hash, full_name, role) VALUES (\\\$$1, \\\$$2, \\\$$3, \\\"Admin\\\", \\\"owner\\\")', [org.rows[0].id, '$(EMAIL)', hash]); \
+					await client.query('INSERT INTO usage_summary (organization_id, current_period_messages, current_period_tokens, period_start, period_end) VALUES (\\\$$1, 0, 0, CURRENT_DATE, CURRENT_DATE + INTERVAL \\\"1 month\\\") ON CONFLICT DO NOTHING', [org.rows[0].id]); \
+					await client.query('COMMIT'); \
+					console.log('Admin user created successfully!'); \
+					console.log('Organization ID:', org.rows[0].id); \
+				} catch (err) { \
+					await client.query('ROLLBACK'); \
+					console.error('Error:', err.message); \
+					process.exit(1); \
+				} finally { \
+					client.release(); \
+					pool.end(); \
+				} \
+			} \
+			createAdmin(); \
+		\" \
+	"

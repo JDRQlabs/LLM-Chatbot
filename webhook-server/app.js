@@ -8,7 +8,51 @@ import { initializeRedis, checkRateLimit, closeRedis } from './rateLimiter.js';
 const { Pool } = pg;
 
 const app = express();
-app.use(express.json());
+
+// SECURITY: Store raw body for HMAC signature verification
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+
+// SECURITY: Meta App Secret for HMAC signature verification
+// This should be your Meta WhatsApp Business app's secret
+const APP_SECRET = process.env.META_APP_SECRET;
+
+/**
+ * Verify Meta webhook signature (HMAC-SHA256)
+ * Meta sends X-Hub-Signature-256 header with all webhook requests
+ */
+function verifyWebhookSignature(req) {
+  // Skip verification if APP_SECRET not configured (development mode)
+  if (!APP_SECRET) {
+    console.warn('WARNING: META_APP_SECRET not set - webhook signature verification disabled');
+    return true;
+  }
+
+  const signature = req.headers['x-hub-signature-256'];
+  if (!signature) {
+    console.error('Missing X-Hub-Signature-256 header');
+    return false;
+  }
+
+  const expectedSignature = 'sha256=' + crypto
+    .createHmac('sha256', APP_SECRET)
+    .update(req.rawBody)
+    .digest('hex');
+
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
+
+  if (!isValid) {
+    console.error('Invalid webhook signature');
+  }
+
+  return isValid;
+}
 
 // Database connection pool for business logic database
 const pool = new Pool({
@@ -61,6 +105,13 @@ app.get('/', (req, res) => {
 // 2. Message Handling (POST)
 app.post('/', async (req, res) => {
   console.log('Webhook received');
+
+  // SECURITY: Verify webhook signature before processing
+  if (!verifyWebhookSignature(req)) {
+    console.error('Webhook signature verification failed - rejecting request');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
   const body = req.body;
 
   // B. Basic Filtering: Only process actual user messages

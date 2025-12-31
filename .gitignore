@@ -1,5 +1,14 @@
+# Environment files (NEVER commit secrets)
 .env
+.env.*
+*.env
+!.env.example
+
+# Python
 *.pyc
+cloud-init.yaml
+logs/*
+htmlcov/*
 
 #from local-gitingest:
 output.txt
