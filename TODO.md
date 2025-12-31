@@ -268,12 +268,12 @@ graph TD
   - [x] Include related messages (thread context)
 
 **Knowledge Base Domain (Existing - Verify):**
-- [ ] Verify existing endpoints work with JWT auth:
-  - [ ] `POST /api/chatbots/:id/knowledge/upload`
-  - [ ] `POST /api/chatbots/:id/knowledge/url`
-  - [ ] `POST /api/chatbots/:id/knowledge/crawl`
-- [ ] Add JWT authentication middleware to existing endpoints
-- [ ] Add organization_id verification (chatbot belongs to user's org)
+- [x] Verify existing endpoints work with JWT auth:
+  - [x] `POST /api/chatbots/:id/knowledge/upload`
+  - [x] `POST /api/chatbots/:id/knowledge/url`
+  - [x] `POST /api/chatbots/:id/knowledge/crawl`
+- [x] Add JWT authentication middleware to existing endpoints
+- [x] Add organization_id verification (chatbot belongs to user's org)
 
 ##### Security Implementation
 

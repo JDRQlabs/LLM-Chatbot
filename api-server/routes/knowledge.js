@@ -5,6 +5,8 @@
  * - File uploads, URL ingestion, web crawling
  * - Document management and status tracking
  * - RAG search testing
+ *
+ * All endpoints require JWT authentication and verify chatbot ownership.
  */
 
 const express = require('express');
@@ -12,6 +14,7 @@ const multer = require('multer');
 const { Pool } = require('pg');
 const fetch = require('node-fetch');
 const { checkQuota } = require('../middleware/quota');
+const { verifyToken, pool: authPool } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -30,6 +33,30 @@ const pool = new Pool({
 const WINDMILL_URL = process.env.WINDMILL_URL || 'http://localhost:8000';
 const WINDMILL_TOKEN = process.env.WINDMILL_TOKEN;
 const WINDMILL_WORKSPACE = process.env.WINDMILL_WORKSPACE || 'development';
+
+/**
+ * Middleware: Verify chatbot belongs to user's organization
+ */
+async function verifyChatbotOwnership(req, res, next) {
+  try {
+    const chatbotId = req.params.id;
+    const organizationId = req.organizationId;
+
+    const result = await pool.query(
+      'SELECT id FROM chatbots WHERE id = $1 AND organization_id = $2',
+      [chatbotId, organizationId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Chatbot not found or access denied' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Chatbot ownership verification error:', error);
+    res.status(500).json({ error: 'Failed to verify chatbot ownership' });
+  }
+}
 
 // File upload configuration (10MB limit)
 const upload = multer({
@@ -80,7 +107,7 @@ async function callWindmillScript(scriptPath, args) {
  * 1. POST /api/chatbots/:id/knowledge/upload
  * Upload PDF or DOCX file
  */
-router.post('/:id/knowledge/upload', upload.single('file'), async (req, res, next) => {
+router.post('/:id/knowledge/upload', verifyToken, verifyChatbotOwnership, upload.single('file'), async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const file = req.file;
@@ -123,7 +150,7 @@ router.post('/:id/knowledge/upload', upload.single('file'), async (req, res, nex
  * 2. POST /api/chatbots/:id/knowledge/url
  * Add single URL to knowledge base
  */
-router.post('/:id/knowledge/url', async (req, res, next) => {
+router.post('/:id/knowledge/url', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { url } = req.body;
@@ -169,7 +196,7 @@ router.post('/:id/knowledge/url', async (req, res, next) => {
  * 3. POST /api/chatbots/:id/knowledge/crawl
  * Discover links from base URL
  */
-router.post('/:id/knowledge/crawl', async (req, res, next) => {
+router.post('/:id/knowledge/crawl', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { baseUrl, maxDepth = 2, maxPages = 50, filterKeywords } = req.body;
@@ -200,7 +227,7 @@ router.post('/:id/knowledge/crawl', async (req, res, next) => {
  * 4. POST /api/chatbots/:id/knowledge/ingest-batch
  * Ingest multiple URLs in batch
  */
-router.post('/:id/knowledge/ingest-batch', async (req, res, next) => {
+router.post('/:id/knowledge/ingest-batch', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { urls } = req.body;
@@ -229,7 +256,7 @@ router.post('/:id/knowledge/ingest-batch', async (req, res, next) => {
  * 5. GET /api/chatbots/:id/knowledge/sources
  * List all knowledge sources (paginated)
  */
-router.get('/:id/knowledge/sources', async (req, res, next) => {
+router.get('/:id/knowledge/sources', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { page = 1, limit = 20, status, sourceType } = req.query;
@@ -304,7 +331,7 @@ router.get('/:id/knowledge/sources', async (req, res, next) => {
  * 6. GET /api/chatbots/:id/knowledge/sources/:sourceId/status
  * Get processing status of a knowledge source
  */
-router.get('/:id/knowledge/sources/:sourceId/status', async (req, res, next) => {
+router.get('/:id/knowledge/sources/:sourceId/status', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { sourceId } = req.params;
 
@@ -356,7 +383,7 @@ router.get('/:id/knowledge/sources/:sourceId/status', async (req, res, next) => 
  * 7. DELETE /api/chatbots/:id/knowledge/sources/:sourceId
  * Delete a knowledge source
  */
-router.delete('/:id/knowledge/sources/:sourceId', async (req, res, next) => {
+router.delete('/:id/knowledge/sources/:sourceId', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId, sourceId } = req.params;
 
@@ -405,7 +432,7 @@ router.delete('/:id/knowledge/sources/:sourceId', async (req, res, next) => {
  * 8. POST /api/chatbots/:id/knowledge/search
  * Test RAG search
  */
-router.post('/:id/knowledge/search', async (req, res, next) => {
+router.post('/:id/knowledge/search', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
     const { query, limit = 5 } = req.body;
@@ -434,7 +461,7 @@ router.post('/:id/knowledge/search', async (req, res, next) => {
  * 9. GET /api/chatbots/:id/knowledge/quota
  * Get current quota usage
  */
-router.get('/:id/knowledge/quota', async (req, res, next) => {
+router.get('/:id/knowledge/quota', verifyToken, verifyChatbotOwnership, async (req, res, next) => {
   try {
     const { id: chatbotId } = req.params;
 
