@@ -1,0 +1,331 @@
+version: "3.7"
+
+# Production Docker Compose for Phase 0 (Single CPX31 VM)
+# - Optimized for 4 vCPU, 8GB RAM
+# - Uses mounted volume at /mnt/data for persistence
+# - MCP servers on internal network only (not exposed to public)
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "${LOG_MAX_SIZE:-20m}"
+    max-file: "${LOG_MAX_FILE:-5}"
+    compress: "true"
+
+networks:
+  # Public network for services that need external access
+  default:
+    driver: bridge
+  # Internal network for MCP servers (not exposed to host)
+  internal:
+    driver: bridge
+    internal: true
+
+services:
+  # =============================================================================
+  # DATA LAYER - Postgres and Redis on mounted volume
+  # =============================================================================
+
+  db:
+    image: postgres:16
+    container_name: windmill_db
+    restart: unless-stopped
+    shm_size: 256m
+    volumes:
+      # Use mounted Hetzner volume for data persistence
+      - /mnt/data/postgres/windmill:/var/lib/postgresql/data
+    expose:
+      - 5432
+    environment:
+      POSTGRES_PASSWORD: ${WINDMILL_DB_PASSWORD}
+      POSTGRES_DB: ${WINDMILL_DB_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *default-logging
+
+  business_logic_db:
+    build: ./docker/postgres
+    container_name: business_logic_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${BUSINESS_LOGIC_DB_USER}
+      POSTGRES_PASSWORD: ${BUSINESS_LOGIC_DB_PASSWORD}
+      POSTGRES_DB: ${BUSINESS_LOGIC_DB_NAME}
+    volumes:
+      # Use mounted Hetzner volume for data persistence
+      - /mnt/data/postgres/business_logic:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BUSINESS_LOGIC_DB_USER} -d ${BUSINESS_LOGIC_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: whatsapp_chatbot_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      # Use mounted Hetzner volume for data persistence
+      - /mnt/data/redis:/data
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *default-logging
+
+  # =============================================================================
+  # WINDMILL ORCHESTRATION LAYER
+  # =============================================================================
+
+  windmill_server:
+    image: ${WM_IMAGE}
+    container_name: windmill_server
+    restart: unless-stopped
+    expose:
+      - 8000
+    environment:
+      - DATABASE_URL=${WINDMILL_DATABASE_URL}
+      - MODE=server
+      - NUM_WORKERS=0
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - worker_logs:/tmp/windmill/logs
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *default-logging
+
+  windmill_worker:
+    image: ${WM_IMAGE}
+    container_name: windmill_worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${WINDMILL_DATABASE_URL}
+      - MODE=worker
+      - WORKER_GROUP=default
+      - NUM_WORKERS=10
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - worker_dependency_cache:/tmp/windmill/cache
+      - worker_logs:/tmp/windmill/logs
+    networks:
+      - default
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "3"
+          memory: 4096M
+    logging: *default-logging
+
+  # =============================================================================
+  # API LAYER - Public-facing services
+  # =============================================================================
+
+  webhook-ingress:
+    build: ./webhook-server
+    container_name: webhook-ingress
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - WEBHOOK_VERIFY_TOKEN=${WEBHOOK_VERIFY_TOKEN}
+      - WINDMILL_TOKEN=${WINDMILL_TOKEN}
+      - WINDMILL_MESSAGE_PROCESSING_ENDPOINT=${WINDMILL_MESSAGE_PROCESSING_ENDPOINT}
+      - DB_HOST=business_logic_db
+      - DB_PORT=5432
+      - DB_USER=${BUSINESS_LOGIC_DB_USER}
+      - DB_PASSWORD=${BUSINESS_LOGIC_DB_PASSWORD}
+      - DB_NAME=${BUSINESS_LOGIC_DB_NAME}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      business_logic_db:
+        condition: service_healthy
+      windmill_server:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *default-logging
+
+  whatsapp_chatbot_api:
+    build: ./api-server
+    container_name: whatsapp_chatbot_api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - DB_HOST=business_logic_db
+      - DB_PORT=5432
+      - DB_USER=${BUSINESS_LOGIC_DB_USER}
+      - DB_PASSWORD=${BUSINESS_LOGIC_DB_PASSWORD}
+      - DB_NAME=${BUSINESS_LOGIC_DB_NAME}
+      - WINDMILL_URL=http://windmill_server:8000
+      - WINDMILL_TOKEN=${WINDMILL_TOKEN}
+      - WINDMILL_WORKSPACE=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      business_logic_db:
+        condition: service_healthy
+      windmill_server:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *default-logging
+
+  # =============================================================================
+  # MCP SERVERS - Internal only (not exposed to host)
+  # =============================================================================
+
+  mcp_pricing_calculator:
+    build: ./mcp-servers/pricing-calculator
+    container_name: mcp_pricing_calculator
+    restart: unless-stopped
+    environment:
+      - PORT=3001
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *default-logging
+
+  mcp_lead_capture:
+    build: ./mcp-servers/lead-capture
+    container_name: mcp_lead_capture
+    restart: unless-stopped
+    environment:
+      - PORT=3002
+      - DB_HOST=business_logic_db
+      - DB_PORT=5432
+      - DB_USER=${BUSINESS_LOGIC_DB_USER}
+      - DB_PASSWORD=${BUSINESS_LOGIC_DB_PASSWORD}
+      - DB_NAME=${BUSINESS_LOGIC_DB_NAME}
+    networks:
+      - default
+      - internal
+    depends_on:
+      business_logic_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *default-logging
+
+  mcp_contact_owner:
+    build: ./mcp-servers/contact-owner
+    container_name: mcp_contact_owner
+    restart: unless-stopped
+    environment:
+      - PORT=3003
+      - DB_HOST=business_logic_db
+      - DB_PORT=5432
+      - DB_USER=${BUSINESS_LOGIC_DB_USER}
+      - DB_PASSWORD=${BUSINESS_LOGIC_DB_PASSWORD}
+      - DB_NAME=${BUSINESS_LOGIC_DB_NAME}
+    networks:
+      - default
+      - internal
+    depends_on:
+      business_logic_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *default-logging
+
+  # =============================================================================
+  # REVERSE PROXY - Caddy for SSL and routing
+  # =============================================================================
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - webhook-ingress
+      - whatsapp_chatbot_api
+      - windmill_server
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *default-logging
+
+volumes:
+  worker_dependency_cache:
+  worker_logs:
+  caddy_data:
+  caddy_config:

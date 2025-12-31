@@ -61,29 +61,78 @@ app.get('/', (req, res) => {
 // 2. Message Handling (POST)
 app.post('/', async (req, res) => {
   console.log('Webhook received');
-  // A. Immediate 200 OK to Meta
-  res.sendStatus(200);
-
   const body = req.body;
 
   // B. Basic Filtering: Only process actual user messages
   // (Ignore status updates like "sent", "delivered", "read")
-  if (body.object === 'whatsapp_business_account') {
-    body.entry?.forEach((entry) => {
-      entry.changes?.forEach((change) => {
-        const value = change.value;
+  if (body.object !== 'whatsapp_business_account') {
+    return res.sendStatus(200);
+  }
 
-        // Check if it's a message (not a status update)
-        if (value.messages && value.messages[0]) {
-          console.log('Processing message');
-          // C. Trigger Windmill Asynchronously
-          // Fire and forget - don't await this
-          triggerWindmillFlow(value);
-          console.log('Triggered Windmill flow');
+  // Process each entry/change
+  for (const entry of body.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change.value;
+
+      // Check if it's a message (not a status update)
+      if (!value.messages || !value.messages[0]) {
+        continue;
+      }
+
+      const message = value.messages[0];
+      const phoneNumberId = value.metadata?.phone_number_id;
+      const whatsappMessageId = message.id;
+
+      // A. Idempotency Check - BEFORE triggering Windmill
+      // This prevents duplicate processing if Meta sends the same webhook multiple times
+      if (whatsappMessageId && phoneNumberId) {
+        try {
+          const result = await pool.query(
+            `INSERT INTO webhook_events
+             (whatsapp_message_id, phone_number_id, status, raw_payload, received_at)
+             VALUES ($1, $2, 'processing', $3, NOW())
+             ON CONFLICT (whatsapp_message_id) DO NOTHING
+             RETURNING id`,
+            [whatsappMessageId, phoneNumberId, JSON.stringify(body)]
+          );
+
+          if (result.rows.length === 0) {
+            // Duplicate webhook - already processed or being processed
+            console.log(`Duplicate webhook detected: ${whatsappMessageId} - skipping`);
+            return res.status(200).json({ status: 'duplicate' });
+          }
+
+          console.log(`Webhook event created: ${whatsappMessageId} (id: ${result.rows[0].id})`);
+        } catch (e) {
+          // Fail open - if idempotency check fails, continue processing
+          // This prevents blocking legitimate requests due to DB issues
+          console.error('Idempotency check failed (continuing anyway):', e.message);
+        }
+      }
+
+      // B. Respond 200 OK to Meta immediately (they require < 3 seconds)
+      res.sendStatus(200);
+
+      // C. Trigger Windmill Asynchronously
+      console.log('Processing message:', whatsappMessageId);
+      triggerWindmillFlow(value).catch(err => {
+        console.error('Windmill flow failed:', err.message);
+        // Update webhook_events status to 'failed' if possible
+        if (whatsappMessageId) {
+          pool.query(
+            `UPDATE webhook_events SET status = 'failed', error_message = $1, processed_at = NOW() WHERE whatsapp_message_id = $2`,
+            [err.message, whatsappMessageId]
+          ).catch(dbErr => console.error('Failed to update webhook status:', dbErr.message));
         }
       });
-    });
+
+      console.log('Triggered Windmill flow');
+      return; // Only process first message, then exit
+    }
   }
+
+  // No messages found, just acknowledge
+  res.sendStatus(200);
 });
 
 async function triggerWindmillFlow(payload) {
