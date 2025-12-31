@@ -1,0 +1,198 @@
+# Production Caddyfile for WhatsApp Chatbot Platform
+#
+# This configuration supports automatic HTTPS via Let's Encrypt.
+# Set DOMAIN environment variable to your domain name.
+#
+# Usage options:
+#   1. Single domain with path-based routing (default)
+#   2. Subdomains for each service (uncomment subdomain blocks)
+
+# Global options
+{
+    # Email for Let's Encrypt notifications
+    email {$ADMIN_EMAIL:admin@example.com}
+
+    # Uncomment for staging certificates during testing
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# =============================================================================
+# HTTP-only server block for IP-based access (testing/development)
+# This allows direct IP access without SSL issues
+# =============================================================================
+:80 {
+    # Security headers (without HSTS since HTTP only)
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # WhatsApp Webhook endpoint (strip /webhook prefix since server uses root)
+    handle /webhook* {
+        uri strip_prefix /webhook
+        reverse_proxy webhook-ingress:3000
+    }
+
+    # Management API
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy whatsapp_chatbot_api:4000
+    }
+
+    # Windmill UI and API (protected with basic auth)
+    handle /windmill* {
+        # SECURITY: Basic auth for Windmill access
+        # Generate password hash with: caddy hash-password
+        # Default credentials: admin / change-me-in-production
+        # Hash for "change-me-in-production": $2a$14$Zkx0OVAJzHxqyOCb3Wj.2e9uR5p5uV5x5u5u5u5u5u5u5u5u5u5u5u
+        basicauth {
+            admin $2a$14$eQmV4w8iKsWZlwPaB7fYguQvqoKCh.M3x0YM5sFGLZwMpzxs/Rloe
+        }
+        uri strip_prefix /windmill
+        reverse_proxy windmill_server:8000
+    }
+
+    # Health check endpoint
+    handle /health {
+        respond "OK" 200
+    }
+
+    # Default: Return 404
+    handle {
+        respond "Not Found" 404
+    }
+
+    log {
+        output file /data/access-http.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# =============================================================================
+# HTTPS domain block - Only used when a real domain is configured
+# (Comment out or remove the :80 block above for production with real domain)
+# =============================================================================
+
+{$DOMAIN:localhost} {
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        # XSS Protection
+        X-XSS-Protection "1; mode=block"
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Remove server header
+        -Server
+    }
+
+    # WhatsApp Webhook endpoint (strip /webhook prefix since server uses root)
+    handle /webhook* {
+        uri strip_prefix /webhook
+        reverse_proxy webhook-ingress:3000
+    }
+
+    # Management API
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy whatsapp_chatbot_api:4000
+    }
+
+    # Windmill UI and API (protected with basic auth)
+    handle /windmill* {
+        # SECURITY: Basic auth for Windmill access
+        # Generate password hash with: caddy hash-password
+        # Default credentials: admin / change-me-in-production
+        basicauth {
+            admin $2a$14$eQmV4w8iKsWZlwPaB7fYguQvqoKCh.M3x0YM5sFGLZwMpzxs/Rloe
+        }
+        uri strip_prefix /windmill
+        reverse_proxy windmill_server:8000
+    }
+
+    # Health check endpoint
+    handle /health {
+        respond "OK" 200
+    }
+
+    # Default: Return 404 for unknown paths
+    handle {
+        respond "Not Found" 404
+    }
+
+    # Access logging
+    log {
+        output file /data/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# =============================================================================
+# OPTION 2: Subdomain-based routing (uncomment to use)
+# =============================================================================
+
+# # API subdomain
+# api.{$DOMAIN} {
+#     header {
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains"
+#         X-Frame-Options "DENY"
+#         X-Content-Type-Options "nosniff"
+#     }
+#
+#     reverse_proxy whatsapp_chatbot_api:4000
+# }
+#
+# # Webhook subdomain
+# webhook.{$DOMAIN} {
+#     header {
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains"
+#         X-Content-Type-Options "nosniff"
+#     }
+#
+#     reverse_proxy webhook-ingress:3000
+# }
+#
+# # Windmill subdomain (internal admin)
+# windmill.{$DOMAIN} {
+#     header {
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains"
+#         X-Frame-Options "DENY"
+#     }
+#
+#     # Require authentication for Windmill
+#     basicauth {
+#         admin $2a$14$... # Use: caddy hash-password
+#     }
+#
+#     reverse_proxy windmill_server:8000
+# }
+
+# =============================================================================
+# Rate limiting
+# =============================================================================
+# Note: Rate limiting is implemented at the application level using
+# express-rate-limit in api-server/middleware/rateLimit.js
+#
+# Current limits:
+# - Auth endpoints (login/register): 5 requests per 15 minutes
+# - General API: 100 requests per minute per user
+# - Knowledge uploads: 10 uploads per hour per organization
+# - Webhooks: 1000 requests per minute (for WhatsApp)
+#
+# For additional proxy-level rate limiting, consider:
+# 1. Building custom Caddy with caddy-rate-limit plugin
+# 2. Using Hetzner Load Balancer with rate limits (Phase 1)
+# 3. Adding nginx in front of Caddy for advanced features
