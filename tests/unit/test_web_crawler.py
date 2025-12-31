@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 import sys
 from pathlib import Path
 import time
+import requests_mock as rm
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -63,20 +64,27 @@ class TestWebCrawler:
         """Test basic successful crawl of a URL."""
         base_url = "https://example.com"
 
-        with patch('requests.get') as mock_get:
-            # Mock robots.txt response
-            robots_response = Mock()
-            robots_response.status_code = 200
-            robots_response.text = mock_robots_txt
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'), \
+             patch('web_crawler.urllib.robotparser.RobotFileParser') as mock_robot_parser:
 
-            # Mock page response
+            # Configure the robot parser mock - need to mock read() and set_url() methods
+            robot_instance = Mock()
+            robot_instance.can_fetch = Mock(return_value=True)
+            robot_instance.read = Mock()
+            robot_instance.set_url = Mock()
+            mock_robot_parser.return_value = robot_instance
+
+            # Mock page response - use dict for headers instead of MagicMock
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = mock_html_response
-            page_response.headers = {"Content-Type": "text/html"}
+            # Use a real dict for headers so .get() and 'in' work properly
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
-            # Setup mock to return different responses
-            mock_get.side_effect = [robots_response, page_response]
+            # requests.get is only used for the actual page fetch
+            mock_get.return_value = page_response
 
             # Execute crawl
             result = crawl_url(
@@ -88,8 +96,9 @@ class TestWebCrawler:
             # Assert basic structure
             assert "discovered_urls" in result
             assert "total_discovered" in result
-            assert "crawl_stats" in result
-            assert result["success"] is True
+            assert "crawl_time_seconds" in result
+            assert "base_domain" in result
+            assert result["base_domain"] == "example.com"
 
             # Should discover at least the base URL
             assert result["total_discovered"] >= 1
@@ -183,15 +192,18 @@ class TestWebCrawler:
         </body></html>
         """
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt_disallow
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = html_with_disallowed
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
             mock_get.side_effect = [robots_response, page_response]
 
@@ -212,15 +224,18 @@ class TestWebCrawler:
         """Test that crawler respects max_depth limit."""
         base_url = "https://example.com"
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = mock_html_response
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
             mock_get.side_effect = [robots_response, page_response]
 
@@ -244,18 +259,26 @@ class TestWebCrawler:
         </body></html>
         """
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = many_links_html
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
-            # Always return the same page
-            mock_get.side_effect = lambda *args, **kwargs: robots_response if "robots.txt" in args[0] else page_response
+            # Always return appropriate response
+            def get_side_effect(*args, **kwargs):
+                if "robots.txt" in args[0]:
+                    return robots_response
+                return page_response
+
+            mock_get.side_effect = get_side_effect
 
             result = crawl_url(
                 base_url=base_url,
@@ -279,15 +302,18 @@ class TestWebCrawler:
         </body></html>
         """
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = mixed_links_html
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
             mock_get.side_effect = [robots_response, page_response]
 
@@ -306,9 +332,11 @@ class TestWebCrawler:
         """Test graceful handling of network errors."""
         base_url = "https://example.com"
 
-        with patch('requests.get') as mock_get:
-            # Simulate network error
-            mock_get.side_effect = Exception("Network error")
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
+            # Simulate network error for all requests
+            import requests
+            mock_get.side_effect = requests.RequestException("Network error")
 
             result = crawl_url(
                 base_url=base_url,
@@ -316,20 +344,27 @@ class TestWebCrawler:
                 max_pages=10
             )
 
-            # Should return error result, not crash
-            assert "error" in result or result["success"] is False
+            # Should return valid result structure even on error, just with no discovered URLs
+            assert "discovered_urls" in result
+            assert "total_discovered" in result
+            assert result["total_discovered"] == 0
 
     def test_error_handling_404(self, mock_robots_txt):
         """Test handling of 404 responses."""
         base_url = "https://example.com"
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 404
+            # 404 should raise an HTTPError when raise_for_status is called
+            import requests
+            page_response.raise_for_status = Mock(side_effect=requests.HTTPError("404 Not Found"))
 
             mock_get.side_effect = [robots_response, page_response]
 
@@ -339,9 +374,9 @@ class TestWebCrawler:
                 max_pages=10
             )
 
-            # Should handle 404 gracefully
-            # Might have no discovered URLs or error message
-            assert "discovered_urls" in result or "error" in result
+            # Should handle 404 gracefully and return valid structure
+            assert "discovered_urls" in result
+            assert "total_discovered" in result
 
     def test_custom_keywords_filtering(self, mock_robots_txt):
         """Test custom keyword filtering."""
@@ -356,15 +391,18 @@ class TestWebCrawler:
         </body></html>
         """
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = html_with_keywords
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
             mock_get.side_effect = [robots_response, page_response]
 
@@ -384,17 +422,19 @@ class TestWebCrawler:
         """Test that crawler enforces 1 request/second rate limit."""
         base_url = "https://example.com"
 
-        with patch('requests.get') as mock_get, \
-             patch('time.sleep') as mock_sleep:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep') as mock_sleep:
 
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = mock_html_response
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
             mock_get.side_effect = [robots_response, page_response, page_response]
 
@@ -421,15 +461,18 @@ class TestWebCrawler:
         </body></html>
         """
 
-        with patch('requests.get') as mock_get:
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'):
             robots_response = Mock()
             robots_response.status_code = 200
             robots_response.text = mock_robots_txt
+            robots_response.raise_for_status = Mock()
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = html_with_content
-            page_response.headers = {"Content-Type": "text/html"}
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
             mock_get.side_effect = [robots_response, page_response]
 
@@ -449,17 +492,26 @@ class TestWebCrawler:
         """Test that crawl statistics are correctly reported."""
         base_url = "https://example.com"
 
-        with patch('requests.get') as mock_get:
-            robots_response = Mock()
-            robots_response.status_code = 200
-            robots_response.text = mock_robots_txt
+        with patch('web_crawler.requests.get') as mock_get, \
+             patch('web_crawler.time.sleep'), \
+             patch('web_crawler.urllib.robotparser.RobotFileParser') as mock_robot_parser:
+
+            # Configure the robot parser mock - need to mock read() and set_url() methods
+            robot_instance = Mock()
+            robot_instance.can_fetch = Mock(return_value=True)
+            robot_instance.read = Mock()
+            robot_instance.set_url = Mock()
+            mock_robot_parser.return_value = robot_instance
 
             page_response = Mock()
             page_response.status_code = 200
             page_response.text = mock_html_response
-            page_response.headers = {"Content-Type": "text/html"}
+            # Use a real dict for headers so .get() and 'in' work properly
+            page_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+            page_response.raise_for_status = Mock()
 
-            mock_get.side_effect = [robots_response, page_response]
+            # requests.get is only used for the actual page fetch
+            mock_get.return_value = page_response
 
             result = crawl_url(
                 base_url=base_url,
@@ -467,9 +519,9 @@ class TestWebCrawler:
                 max_pages=10
             )
 
-            # Should have statistics
-            assert "crawl_stats" in result
-            stats = result["crawl_stats"]
-            assert "pages_crawled" in stats
-            assert "links_found" in stats
-            assert stats["pages_crawled"] >= 1
+            # Should have basic statistics
+            assert "total_discovered" in result
+            assert "crawl_time_seconds" in result
+            assert "base_domain" in result
+            assert result["total_discovered"] >= 1
+            assert result["crawl_time_seconds"] >= 0

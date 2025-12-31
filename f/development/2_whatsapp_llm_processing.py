@@ -403,7 +403,7 @@ def retrieve_knowledge(
         
         # Use the search function we created
         cur.execute(
-            "SELECT * FROM search_knowledge_base(%s, %s, %s, %s)",
+            "SELECT * FROM search_knowledge_base(%s::uuid, %s::vector(1536), %s, %s)",
             (chatbot_id, query_embedding, top_k, similarity_threshold)
         )
         

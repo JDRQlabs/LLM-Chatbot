@@ -509,6 +509,1204 @@ class TestStep2LLMProcessing:
             assert result["usage_info"]["chunks_retrieved"] == 0
             assert len(result["retrieved_sources"]) == 0
 
+    def test_openai_history_with_content(self):
+        """
+        GOAL: Test that OpenAI history includes only messages with content
+        GIVEN: History with messages that have and don't have content
+        WHEN: main is called with OpenAI
+        THEN: Only messages with content are added to conversation
+        """
+        mock_client = Mock()
+        mock_message = Mock()
+        mock_message.content = "Response"
+        mock_choice = Mock()
+        mock_choice.message = mock_message
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = OpenAIUsage(100, 40)
+        mock_client.chat = Mock()
+        mock_client.chat.completions = Mock()
+        mock_client.chat.completions.create = Mock(return_value=mock_response)
+
+        with patch.object(step2_module, 'OpenAI', return_value=mock_client):
+            result = step2_main(
+                context_payload={
+                    "proceed": True,
+                    "chatbot": {
+                        "id": "test",
+                        "model_name": "gpt-4o",
+                        "system_prompt": "Test",
+                        "persona": "",
+                        "temperature": 0.7,
+                        "rag_config": {"enabled": False}
+                    },
+                    "user": {"id": "test", "phone": "123", "name": "Test", "variables": {}},
+                    "history": [
+                        {"role": "user", "content": "First message"},
+                        {"role": "assistant", "content": ""},  # Empty content - should be skipped
+                        {"role": "user", "content": "Second message"}
+                    ],
+                    "tools": []
+                },
+                user_message="Current message",
+                openai_api_key="fake_key"
+            )
+
+            # Verify the call was made
+            assert mock_client.chat.completions.create.called
+            call_args = mock_client.chat.completions.create.call_args
+            messages = call_args.kwargs['messages']
+
+            # Should have: system + 2 history messages (skipping empty) + current user message
+            assert len(messages) == 4
+            assert messages[0]['role'] == 'system'
+            assert messages[1]['content'] == 'First message'
+            assert messages[2]['content'] == 'Second message'
+            assert messages[3]['content'] == 'Current message'
+
+    def test_missing_google_api_key(self):
+        """
+        GOAL: Test handling when Google API key is missing
+        GIVEN: Google provider with no API key
+        WHEN: main is called
+        THEN: Returns error for missing API key
+        """
+        result = step2_main(
+            context_payload={
+                "proceed": True,
+                "chatbot": {
+                    "id": "test",
+                    "model_name": "gemini-pro",
+                    "system_prompt": "Test",
+                    "persona": "",
+                    "temperature": 0.7,
+                    "rag_config": {"enabled": False}
+                },
+                "user": {"id": "test", "phone": "123", "name": "Test", "variables": {}},
+                "history": [],
+                "tools": []
+            },
+            user_message="Test",
+            google_api_key="",  # Missing
+            default_provider="google"
+        )
+
+        assert result["error"] == "Missing Google API Key"
+
+    def test_google_no_usage_metadata_fallback(self):
+        """
+        GOAL: Test Google token estimation fallback when usage_metadata is missing
+        GIVEN: Gemini response without usage_metadata
+        WHEN: main processes the response
+        THEN: Uses estimate_tokens fallback
+        """
+        mock_client = Mock()
+        mock_models = Mock()
+        mock_response = Mock()
+        mock_response.text = "Response text"
+        # No usage_metadata attribute
+        del mock_response.usage_metadata
+
+        mock_models.generate_content = Mock(return_value=mock_response)
+        mock_client.models = mock_models
+
+        with patch.object(mock_genai, 'Client', return_value=mock_client):
+            result = step2_main(
+                context_payload={
+                    "proceed": True,
+                    "chatbot": {
+                        "id": "test",
+                        "model_name": "gemini-pro",
+                        "system_prompt": "Test",
+                        "persona": "",
+                        "temperature": 0.7,
+                        "rag_config": {"enabled": False}
+                    },
+                    "user": {"id": "test", "phone": "123", "name": "Test", "variables": {}},
+                    "history": [],
+                    "tools": []
+                },
+                user_message="Test",
+                google_api_key="fake_key"
+            )
+
+            # Should use estimate_tokens
+            assert result["usage_info"]["tokens_input"] > 0
+            assert result["usage_info"]["tokens_output"] > 0
+
+    def test_unknown_provider_error(self):
+        """
+        GOAL: Test error handling for unknown provider
+        GIVEN: Invalid provider name
+        WHEN: main is called
+        THEN: Returns error for unknown provider
+        """
+        result = step2_main(
+            context_payload={
+                "proceed": True,
+                "chatbot": {
+                    "id": "test",
+                    "model_name": "unknown-model",
+                    "system_prompt": "Test",
+                    "persona": "",
+                    "temperature": 0.7,
+                    "rag_config": {"enabled": False}
+                },
+                "user": {"id": "test", "phone": "123", "name": "Test", "variables": {}},
+                "history": [],
+                "tools": []
+            },
+            user_message="Test",
+            default_provider="unknown_provider"
+        )
+
+        assert "error" in result
+        assert "unknown_provider" in result["error"].lower()
+
+
+class TestAgentLoop:
+    """Test agent loop functionality for both OpenAI and Gemini"""
+
+    def test_openai_agent_loop_with_tool_calls(self):
+        """
+        GOAL: Test OpenAI agent loop executes tools and returns response
+        GIVEN: OpenAI client that returns tool calls then final response
+        WHEN: execute_agent_loop_openai is called
+        THEN: Tools are executed and final response is returned
+        """
+        mock_client = Mock()
+
+        # First response: tool call
+        mock_tool_call = Mock()
+        mock_tool_call.id = "call_123"
+        mock_tool_call.function.name = "search_knowledge_base"
+        mock_tool_call.function.arguments = '{"query": "test query"}'
+
+        mock_message_1 = Mock()
+        mock_message_1.tool_calls = [mock_tool_call]
+        mock_choice_1 = Mock()
+        mock_choice_1.finish_reason = "tool_calls"
+        mock_choice_1.message = mock_message_1
+        mock_response_1 = Mock()
+        mock_response_1.choices = [mock_choice_1]
+        mock_response_1.usage = OpenAIUsage(100, 20)
+
+        # Second response: final answer
+        mock_message_2 = Mock()
+        mock_message_2.content = "Based on the search results, here is the answer."
+        mock_choice_2 = Mock()
+        mock_choice_2.finish_reason = "stop"
+        mock_choice_2.message = mock_message_2
+        mock_response_2 = Mock()
+        mock_response_2.choices = [mock_choice_2]
+        mock_response_2.usage = OpenAIUsage(120, 30)
+
+        mock_client.chat.completions.create = Mock(side_effect=[mock_response_1, mock_response_2])
+
+        # Mock RAG search
+        with patch.object(step2_module, 'execute_tool') as mock_execute_tool:
+            mock_execute_tool.return_value = {"success": True, "results": [{"content": "info"}]}
+
+            result = step2_module.execute_agent_loop_openai(
+                client=mock_client,
+                model_name="gpt-4o",
+                messages=[{"role": "system", "content": "You are helpful"}],
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "search_knowledge_base",
+                        "description": "Search knowledge base"
+                    }
+                }],
+                chatbot_id="chatbot-123",
+                temperature=0.7,
+                openai_api_key="fake_key",
+                db_resource="f/development/db",
+                max_iterations=5
+            )
+
+            # Assertions
+            assert result["reply_text"] == "Based on the search results, here is the answer."
+            assert len(result["tool_executions"]) == 1
+            assert result["tool_executions"][0]["tool_name"] == "search_knowledge_base"
+            assert result["tool_executions"][0]["status"] == "success"
+            assert result["usage_info"]["tokens_input"] == 220  # 100 + 120
+            assert result["usage_info"]["tokens_output"] == 50  # 20 + 30
+            assert result["usage_info"]["iterations"] == 2
+
+    def test_openai_agent_loop_multiple_tool_calls_in_one_response(self):
+        """
+        GOAL: Test OpenAI agent handles multiple tool calls in single response
+        GIVEN: OpenAI response with multiple tool calls
+        WHEN: execute_agent_loop_openai processes them
+        THEN: All tools are executed and results fed back
+        """
+        mock_client = Mock()
+
+        # Response with 2 tool calls
+        mock_tool_call_1 = Mock()
+        mock_tool_call_1.id = "call_1"
+        mock_tool_call_1.function.name = "search_knowledge_base"
+        mock_tool_call_1.function.arguments = '{"query": "query1"}'
+
+        mock_tool_call_2 = Mock()
+        mock_tool_call_2.id = "call_2"
+        mock_tool_call_2.function.name = "search_knowledge_base"
+        mock_tool_call_2.function.arguments = '{"query": "query2"}'
+
+        mock_message_1 = Mock()
+        mock_message_1.tool_calls = [mock_tool_call_1, mock_tool_call_2]
+        mock_choice_1 = Mock()
+        mock_choice_1.finish_reason = "tool_calls"
+        mock_choice_1.message = mock_message_1
+        mock_response_1 = Mock()
+        mock_response_1.choices = [mock_choice_1]
+        mock_response_1.usage = OpenAIUsage(100, 20)
+
+        # Final response
+        mock_message_2 = Mock()
+        mock_message_2.content = "Combined answer from both searches"
+        mock_choice_2 = Mock()
+        mock_choice_2.finish_reason = "stop"
+        mock_choice_2.message = mock_message_2
+        mock_response_2 = Mock()
+        mock_response_2.choices = [mock_choice_2]
+        mock_response_2.usage = OpenAIUsage(150, 40)
+
+        mock_client.chat.completions.create = Mock(side_effect=[mock_response_1, mock_response_2])
+
+        with patch.object(step2_module, 'execute_tool') as mock_execute_tool:
+            mock_execute_tool.return_value = {"success": True, "results": []}
+
+            result = step2_module.execute_agent_loop_openai(
+                client=mock_client,
+                model_name="gpt-4o",
+                messages=[{"role": "user", "content": "Test"}],
+                tools=[{"type": "function", "function": {"name": "search_knowledge_base"}}],
+                chatbot_id="chatbot-123",
+                temperature=0.7,
+                openai_api_key="fake_key",
+                db_resource="f/development/db",
+                max_iterations=5
+            )
+
+            # Should have executed both tools
+            assert len(result["tool_executions"]) == 2
+            assert mock_execute_tool.call_count == 2
+
+    def test_openai_agent_loop_max_iterations(self):
+        """
+        GOAL: Test OpenAI agent loop stops at max iterations
+        GIVEN: Agent that keeps requesting tools
+        WHEN: Max iterations is reached
+        THEN: Returns max iterations message
+        """
+        mock_client = Mock()
+
+        # Always return tool calls
+        mock_tool_call = Mock()
+        mock_tool_call.id = "call_123"
+        mock_tool_call.function.name = "search_knowledge_base"
+        mock_tool_call.function.arguments = '{"query": "test"}'
+
+        mock_message = Mock()
+        mock_message.tool_calls = [mock_tool_call]
+        mock_choice = Mock()
+        mock_choice.finish_reason = "tool_calls"
+        mock_choice.message = mock_message
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = OpenAIUsage(100, 20)
+
+        mock_client.chat.completions.create = Mock(return_value=mock_response)
+
+        with patch.object(step2_module, 'execute_tool') as mock_execute_tool:
+            mock_execute_tool.return_value = {"success": True, "results": []}
+
+            result = step2_module.execute_agent_loop_openai(
+                client=mock_client,
+                model_name="gpt-4o",
+                messages=[{"role": "user", "content": "Test"}],
+                tools=[{"type": "function", "function": {"name": "search_knowledge_base"}}],
+                chatbot_id="chatbot-123",
+                temperature=0.7,
+                openai_api_key="fake_key",
+                db_resource="f/development/db",
+                max_iterations=3  # Low limit
+            )
+
+            # Should hit max iterations
+            assert "need more time" in result["reply_text"].lower() or "rephrase" in result["reply_text"].lower()
+            assert result["usage_info"]["max_iterations_reached"] is True
+            assert result["usage_info"]["iterations"] == 3
+
+    def test_openai_agent_loop_unexpected_finish_reason(self):
+        """
+        GOAL: Test handling of unexpected finish_reason
+        GIVEN: OpenAI returns unexpected finish_reason
+        WHEN: execute_agent_loop_openai processes it
+        THEN: Returns appropriate error message
+        """
+        mock_client = Mock()
+
+        mock_message = Mock()
+        mock_message.content = "Partial response"
+        mock_choice = Mock()
+        mock_choice.finish_reason = "length"  # Unexpected
+        mock_choice.message = mock_message
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = OpenAIUsage(100, 20)
+
+        mock_client.chat.completions.create = Mock(return_value=mock_response)
+
+        result = step2_module.execute_agent_loop_openai(
+            client=mock_client,
+            model_name="gpt-4o",
+            messages=[{"role": "user", "content": "Test"}],
+            tools=[],
+            chatbot_id="chatbot-123",
+            temperature=0.7,
+            openai_api_key="fake_key",
+            db_resource="f/development/db",
+            max_iterations=5
+        )
+
+        # Should handle unexpected finish reason
+        assert result["usage_info"]["finish_reason"] == "length"
+        assert result["reply_text"] is not None
+
+    def test_openai_agent_loop_exception_handling(self):
+        """
+        GOAL: Test OpenAI agent loop handles exceptions gracefully
+        GIVEN: OpenAI client that raises exception
+        WHEN: execute_agent_loop_openai is called
+        THEN: Returns error message with exception info
+        """
+        mock_client = Mock()
+        mock_client.chat.completions.create = Mock(side_effect=Exception("API Error"))
+
+        result = step2_module.execute_agent_loop_openai(
+            client=mock_client,
+            model_name="gpt-4o",
+            messages=[{"role": "user", "content": "Test"}],
+            tools=[],
+            chatbot_id="chatbot-123",
+            temperature=0.7,
+            openai_api_key="fake_key",
+            db_resource="f/development/db",
+            max_iterations=5
+        )
+
+        assert "error" in result["reply_text"].lower()
+        assert result["usage_info"]["error"] == "API Error"
+        assert result["usage_info"]["iterations"] == 1
+
+    def test_openai_agent_loop_via_main(self):
+        """
+        GOAL: Test OpenAI agent loop is invoked via main when tools are present
+        GIVEN: OpenAI chatbot with tools configured
+        WHEN: main is called
+        THEN: Agent loop is used and tools are available
+        """
+        mock_client = Mock()
+
+        # Mock agent loop response
+        mock_message = Mock()
+        mock_message.content = "Response using tools"
+        mock_choice = Mock()
+        mock_choice.finish_reason = "stop"
+        mock_choice.message = mock_message
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = OpenAIUsage(100, 30)
+
+        mock_client.chat.completions.create = Mock(return_value=mock_response)
+
+        with patch.object(step2_module, 'OpenAI', return_value=mock_client):
+            result = step2_main(
+                context_payload={
+                    "proceed": True,
+                    "chatbot": {
+                        "id": "chatbot-123",
+                        "model_name": "gpt-4o",
+                        "system_prompt": "Test",
+                        "persona": "",
+                        "temperature": 0.7,
+                        "rag_config": {"enabled": False}
+                    },
+                    "user": {"id": "test", "phone": "123", "name": "Test", "variables": {}},
+                    "history": [],
+                    "tools": [
+                        {
+                            "enabled": True,
+                            "provider": "mcp",
+                            "name": "test_tool",
+                            "config": {
+                                "description": "Test tool",
+                                "parameters": {}
+                            }
+                        }
+                    ]
+                },
+                user_message="Test",
+                openai_api_key="fake_key"
+            )
+
+            assert "error" not in result
+            assert result["reply_text"] == "Response using tools"
+
+    def test_gemini_agent_loop_max_iterations(self):
+        """
+        GOAL: Test Gemini agent loop stops at max iterations
+        GIVEN: Gemini that keeps requesting function calls
+        WHEN: Max iterations is reached
+        THEN: Returns max iterations message
+        """
+        mock_client = Mock()
+        mock_models = Mock()
+
+        # Create function call part
+        mock_fc = Mock()
+        mock_fc.name = "search_knowledge_base"
+        mock_fc.args = {"query": "test"}
+
+        mock_part = Mock()
+        mock_part.function_call = mock_fc
+
+        mock_candidate = Mock()
+        mock_candidate.content = Mock()
+        mock_candidate.content.parts = [mock_part]
+
+        mock_response = Mock()
+        mock_response.candidates = [mock_candidate]
+        mock_response.usage_metadata = UsageMetadata(100, 20)
+
+        mock_models.generate_content = Mock(return_value=mock_response)
+        mock_client.models = mock_models
+
+        with patch.object(step2_module, 'execute_tool') as mock_execute_tool:
+            mock_execute_tool.return_value = {"success": True}
+
+            result = step2_module.execute_agent_loop_gemini(
+                client=mock_client,
+                model_name="gemini-pro",
+                system_prompt="Test",
+                user_message="Test",
+                chat_history=[],
+                tools=[{"function": {"name": "search_knowledge_base"}}],
+                chatbot_id="chatbot-123",
+                temperature=0.7,
+                google_api_key="fake_key",
+                db_resource="f/development/db",
+                fallback_message_error="Error",
+                fallback_message_limit="Limit",
+                max_iterations=2
+            )
+
+            # Should hit max iterations
+            assert "reformular" in result["reply_text"].lower() or "información" in result["reply_text"].lower()
+            assert result["usage_info"]["max_iterations_reached"] is True
+
+
+class TestToolExecution:
+    """Test tool execution functionality"""
+
+    def test_execute_tool_search_knowledge_base(self):
+        """
+        GOAL: Test built-in search_knowledge_base tool execution
+        GIVEN: Tool call to search_knowledge_base
+        WHEN: execute_tool is called
+        THEN: RAG search is executed
+        """
+        with patch.object(step2_module, 'execute_rag_search') as mock_rag_search:
+            mock_rag_search.return_value = {"success": True, "results": []}
+
+            result = step2_module.execute_tool(
+                tool_name="search_knowledge_base",
+                arguments={"query": "test query"},
+                tools=[],  # Not in tools list - it's built-in
+                chatbot_id="chatbot-123",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert result["success"] is True
+            mock_rag_search.assert_called_once_with(
+                chatbot_id="chatbot-123",
+                query="test query",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+    def test_execute_tool_not_found(self):
+        """
+        GOAL: Test error when tool is not found
+        GIVEN: Invalid tool name
+        WHEN: execute_tool is called
+        THEN: Returns tool not found error
+        """
+        result = step2_module.execute_tool(
+            tool_name="nonexistent_tool",
+            arguments={},
+            tools=[],
+            chatbot_id="chatbot-123",
+            openai_api_key="fake_key",
+            db_resource="f/development/db"
+        )
+
+        assert "error" in result
+        assert "not found" in result["error"].lower()
+
+    def test_execute_tool_mcp(self):
+        """
+        GOAL: Test MCP tool execution
+        GIVEN: MCP tool definition
+        WHEN: execute_tool is called
+        THEN: MCP tool is executed via HTTP
+        """
+        tools = [{
+            "type": "function",
+            "function": {"name": "calculate_price"},
+            "_metadata": {
+                "tool_type": "mcp",
+                "mcp_server_url": "http://mcp-server:3001"
+            }
+        }]
+
+        with patch.object(step2_module, 'execute_mcp_tool') as mock_mcp:
+            mock_mcp.return_value = {"result": "calculated"}
+
+            result = step2_module.execute_tool(
+                tool_name="calculate_price",
+                arguments={"amount": 100},
+                tools=tools,
+                chatbot_id="chatbot-123",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert result["result"] == "calculated"
+            mock_mcp.assert_called_once()
+
+    def test_execute_tool_windmill(self):
+        """
+        GOAL: Test Windmill tool execution
+        GIVEN: Windmill tool definition
+        WHEN: execute_tool is called
+        THEN: Windmill script is executed
+        """
+        tools = [{
+            "type": "function",
+            "function": {"name": "process_data"},
+            "_metadata": {
+                "tool_type": "windmill",
+                "script_path": "f/scripts/process"
+            }
+        }]
+
+        with patch.object(step2_module, 'execute_windmill_tool') as mock_windmill:
+            mock_windmill.return_value = {"success": True, "data": "processed"}
+
+            result = step2_module.execute_tool(
+                tool_name="process_data",
+                arguments={"input": "data"},
+                tools=tools,
+                chatbot_id="chatbot-123",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert result["success"] is True
+            mock_windmill.assert_called_once()
+
+    def test_execute_tool_unknown_type(self):
+        """
+        GOAL: Test error for unknown tool type
+        GIVEN: Tool with unknown type
+        WHEN: execute_tool is called
+        THEN: Returns unknown tool type error
+        """
+        tools = [{
+            "type": "function",
+            "function": {"name": "test_tool"},
+            "_metadata": {"tool_type": "unknown"}
+        }]
+
+        result = step2_module.execute_tool(
+            tool_name="test_tool",
+            arguments={},
+            tools=tools,
+            chatbot_id="chatbot-123",
+            openai_api_key="fake_key",
+            db_resource="f/development/db"
+        )
+
+        assert "error" in result
+        assert "unknown tool type" in result["error"].lower()
+
+    def test_execute_tool_exception(self):
+        """
+        GOAL: Test exception handling in tool execution
+        GIVEN: Tool that raises exception
+        WHEN: execute_tool is called
+        THEN: Returns error message
+        """
+        tools = [{
+            "type": "function",
+            "function": {"name": "failing_tool"},
+            "_metadata": {"tool_type": "mcp", "mcp_server_url": "http://server"}
+        }]
+
+        with patch.object(step2_module, 'execute_mcp_tool') as mock_mcp:
+            mock_mcp.side_effect = Exception("Tool failed")
+
+            result = step2_module.execute_tool(
+                tool_name="failing_tool",
+                arguments={},
+                tools=tools,
+                chatbot_id="chatbot-123",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert "error" in result
+            assert "Tool failed" in result["error"]
+
+
+class TestRAGSearch:
+    """Test RAG search execution"""
+
+    def test_execute_rag_search_success(self):
+        """
+        GOAL: Test successful RAG search execution
+        GIVEN: Valid search parameters
+        WHEN: execute_rag_search is called
+        THEN: Returns formatted search results
+        """
+        with patch.object(step2_module, 'retrieve_knowledge') as mock_retrieve:
+            mock_retrieve.return_value = [
+                {
+                    "content": "Information about product",
+                    "source_name": "Manual",
+                    "similarity": 0.9,
+                    "metadata": {"page": 10}
+                }
+            ]
+
+            result = step2_module.execute_rag_search(
+                chatbot_id="chatbot-123",
+                query="product info",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert result["success"] is True
+            assert len(result["results"]) == 1
+            assert result["results"][0]["content"] == "Information about product"
+            assert result["results"][0]["relevance"] == "90%"
+            assert result["count"] == 1
+
+    def test_execute_rag_search_no_results(self):
+        """
+        GOAL: Test RAG search with no results
+        GIVEN: Search query that returns no results
+        WHEN: execute_rag_search is called
+        THEN: Returns empty results with message
+        """
+        with patch.object(step2_module, 'retrieve_knowledge') as mock_retrieve:
+            mock_retrieve.return_value = []
+
+            result = step2_module.execute_rag_search(
+                chatbot_id="chatbot-123",
+                query="unknown topic",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert result["success"] is True
+            assert len(result["results"]) == 0
+            assert "no relevant information" in result["message"].lower()
+
+    def test_execute_rag_search_exception(self):
+        """
+        GOAL: Test RAG search exception handling
+        GIVEN: retrieve_knowledge raises exception
+        WHEN: execute_rag_search is called
+        THEN: Returns error message
+        """
+        with patch.object(step2_module, 'retrieve_knowledge') as mock_retrieve:
+            mock_retrieve.side_effect = Exception("Database error")
+
+            result = step2_module.execute_rag_search(
+                chatbot_id="chatbot-123",
+                query="test",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert "error" in result
+            assert "Database error" in result["error"]
+
+    def test_retrieve_knowledge_exception_handling(self):
+        """
+        GOAL: Test retrieve_knowledge exception handling
+        GIVEN: Database or API error during retrieval
+        WHEN: retrieve_knowledge is called
+        THEN: Returns empty list
+        """
+        with patch.object(step2_module, 'OpenAI') as mock_openai:
+            mock_openai.side_effect = Exception("OpenAI error")
+
+            result = step2_module.retrieve_knowledge(
+                chatbot_id="chatbot-123",
+                query="test",
+                openai_api_key="fake_key",
+                db_resource="f/development/db"
+            )
+
+            assert result == []
+
+
+class TestMCPToolExecution:
+    """Test MCP tool execution"""
+
+    def test_execute_mcp_tool_success(self):
+        """
+        GOAL: Test successful MCP tool execution
+        GIVEN: Valid MCP server and tool
+        WHEN: execute_mcp_tool is called
+        THEN: HTTP request is made and response returned
+        """
+        metadata = {
+            "mcp_server_url": "http://mcp-server:3001",
+            "integration_id": "int-123"
+        }
+
+        with patch('requests.post') as mock_post:
+            mock_response = Mock()
+            mock_response.json.return_value = {"result": "success"}
+            mock_post.return_value = mock_response
+
+            result = step2_module.execute_mcp_tool(
+                tool_name="calculate_price",
+                metadata=metadata,
+                arguments={"amount": 100},
+                chatbot_id="chatbot-123"
+            )
+
+            assert result["result"] == "success"
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert call_args.kwargs['json']['chatbot_id'] == "chatbot-123"
+            assert call_args.kwargs['json']['amount'] == 100
+
+    def test_execute_mcp_tool_no_url(self):
+        """
+        GOAL: Test MCP tool execution with missing URL
+        GIVEN: Metadata without server URL
+        WHEN: execute_mcp_tool is called
+        THEN: Returns error for missing URL
+        """
+        metadata = {}  # No URL
+
+        result = step2_module.execute_mcp_tool(
+            tool_name="test_tool",
+            metadata=metadata,
+            arguments={},
+            chatbot_id="chatbot-123"
+        )
+
+        assert "error" in result
+        assert "not configured" in result["error"].lower()
+
+    def test_execute_mcp_tool_timeout(self):
+        """
+        GOAL: Test MCP tool timeout handling
+        GIVEN: MCP server that times out
+        WHEN: execute_mcp_tool is called
+        THEN: Returns timeout error
+        """
+        metadata = {"mcp_server_url": "http://mcp-server:3001"}
+
+        with patch('requests.post') as mock_post:
+            import requests
+            mock_post.side_effect = requests.Timeout()
+
+            result = step2_module.execute_mcp_tool(
+                tool_name="slow_tool",
+                metadata=metadata,
+                arguments={},
+                chatbot_id="chatbot-123"
+            )
+
+            assert "error" in result
+            assert "timeout" in result["error"].lower()
+
+    def test_execute_mcp_tool_request_exception(self):
+        """
+        GOAL: Test MCP tool request exception handling
+        GIVEN: MCP server that returns error
+        WHEN: execute_mcp_tool is called
+        THEN: Returns error message
+        """
+        metadata = {"mcp_server_url": "http://mcp-server:3001"}
+
+        with patch('requests.post') as mock_post:
+            import requests
+            mock_post.side_effect = requests.RequestException("Connection error")
+
+            result = step2_module.execute_mcp_tool(
+                tool_name="failing_tool",
+                metadata=metadata,
+                arguments={},
+                chatbot_id="chatbot-123"
+            )
+
+            assert "error" in result
+            assert "Connection error" in result["error"]
+
+
+class TestWindmillToolExecution:
+    """Test Windmill tool execution"""
+
+    def test_execute_windmill_tool_success(self):
+        """
+        GOAL: Test successful Windmill tool execution
+        GIVEN: Valid Windmill script path
+        WHEN: execute_windmill_tool is called
+        THEN: Script is executed and result returned
+        """
+        metadata = {"script_path": "f/scripts/process_data"}
+        arguments = {"input": "test data"}
+
+        mock_wmill.run_script_by_path = Mock(return_value={"processed": "data"})
+
+        result = step2_module.execute_windmill_tool(
+            metadata=metadata,
+            arguments=arguments
+        )
+
+        assert result["success"] is True
+        assert result["data"]["processed"] == "data"
+        mock_wmill.run_script_by_path.assert_called_once_with(
+            path="f/scripts/process_data",
+            args=arguments,
+            timeout=30
+        )
+
+    def test_execute_windmill_tool_no_script_path(self):
+        """
+        GOAL: Test Windmill tool with missing script path
+        GIVEN: Metadata without script_path
+        WHEN: execute_windmill_tool is called
+        THEN: Returns error for missing path
+        """
+        metadata = {}  # No script_path
+
+        result = step2_module.execute_windmill_tool(
+            metadata=metadata,
+            arguments={}
+        )
+
+        assert "error" in result
+        assert "not configured" in result["error"].lower()
+
+    def test_execute_windmill_tool_exception(self):
+        """
+        GOAL: Test Windmill tool exception handling
+        GIVEN: Script that raises exception
+        WHEN: execute_windmill_tool is called
+        THEN: Returns error message
+        """
+        metadata = {"script_path": "f/scripts/failing"}
+
+        mock_wmill.run_script_by_path = Mock(side_effect=Exception("Script failed"))
+
+        result = step2_module.execute_windmill_tool(
+            metadata=metadata,
+            arguments={}
+        )
+
+        assert "error" in result
+        assert "Script failed" in result["error"]
+
+
+class TestToolPreparation:
+    """Test tool definition preparation"""
+
+    def test_prepare_tool_definitions_disabled_tools(self):
+        """
+        GOAL: Test that disabled tools are skipped
+        GIVEN: Tool list with enabled and disabled tools
+        WHEN: prepare_tool_definitions is called
+        THEN: Only enabled tools are included
+        """
+        tools = [
+            {
+                "enabled": True,
+                "provider": "mcp",
+                "name": "enabled_tool",
+                "config": {"description": "Enabled"}
+            },
+            {
+                "enabled": False,
+                "provider": "mcp",
+                "name": "disabled_tool",
+                "config": {"description": "Disabled"}
+            }
+        ]
+
+        result = step2_module.prepare_tool_definitions(tools, "chatbot-123")
+
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == "enabled_tool"
+
+    def test_prepare_tool_definitions_windmill_tool(self):
+        """
+        GOAL: Test Windmill tool definition preparation
+        GIVEN: Windmill tool configuration
+        WHEN: prepare_tool_definitions is called
+        THEN: Tool is formatted correctly
+        """
+        tools = [
+            {
+                "enabled": True,
+                "provider": "windmill",
+                "name": "windmill_script",
+                "description": "Process data",
+                "parameters": {"type": "object", "properties": {"input": {"type": "string"}}},
+                "settings": {"script_path": "f/scripts/process"},
+                "id": "tool-456"
+            }
+        ]
+
+        result = step2_module.prepare_tool_definitions(tools, "chatbot-123")
+
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == "windmill_script"
+        assert result[0]["_metadata"]["tool_type"] == "windmill"
+        assert result[0]["_metadata"]["script_path"] == "f/scripts/process"
+
+
+class TestUtilityFunctions:
+    """Test utility functions"""
+
+    def test_estimate_tokens(self):
+        """
+        GOAL: Test token estimation function
+        GIVEN: Text of various lengths
+        WHEN: estimate_tokens is called
+        THEN: Returns reasonable token estimate
+        """
+        # Short text
+        short_tokens = step2_module.estimate_tokens("Hello world")
+        assert short_tokens > 0
+        assert short_tokens < 10
+
+        # Long text (400 chars = ~100 tokens)
+        long_text = "a" * 400
+        long_tokens = step2_module.estimate_tokens(long_text)
+        assert long_tokens == 100
+
+        # Empty text should return at least 1
+        empty_tokens = step2_module.estimate_tokens("")
+        assert empty_tokens == 1
+
+    def test_build_tool_instructions_with_llm_instructions(self):
+        """
+        GOAL: Test build_tool_instructions includes LLM instructions when present
+        GIVEN: Tools with llm_instructions field
+        WHEN: build_tool_instructions is called
+        THEN: LLM instructions are included in output
+        """
+        tools = [
+            {
+                "name": "tool_with_instructions",
+                "config": {
+                    "description": "Test tool",
+                    "llm_instructions": "Use this when user asks about pricing"
+                }
+            },
+            {
+                "name": "tool_without_instructions",
+                "config": {
+                    "description": "Another tool"
+                }
+            }
+        ]
+
+        result = step2_module.build_tool_instructions(tools)
+
+        assert "tool_with_instructions" in result
+        assert "Use this when user asks about pricing" in result
+        assert "tool_without_instructions" in result
+
+    def test_step1_failure_handling(self):
+        """
+        GOAL: Test proper error handling when Step 1 fails
+        GIVEN: context_payload with proceed=False
+        WHEN: main is called
+        THEN: Returns error message and notify_admin flag
+        """
+        result = step2_main(
+            context_payload={
+                "proceed": False,
+                "reason": "User is blocked",
+                "notify_admin": True
+            },
+            user_message="Test"
+        )
+
+        assert "error" in result
+        assert result["error"] == "User is blocked"
+        assert result["should_notify_admin"] is True
+        assert "unable to process" in result["reply_text"].lower()
+
+    def test_retrieve_knowledge_no_api_key(self):
+        """
+        GOAL: Test retrieve_knowledge returns empty when no API key
+        GIVEN: Empty API key
+        WHEN: retrieve_knowledge is called
+        THEN: Returns empty list without calling OpenAI
+        """
+        result = step2_module.retrieve_knowledge(
+            chatbot_id="chatbot-123",
+            query="test",
+            openai_api_key="",  # No API key
+            db_resource="f/development/db"
+        )
+
+        assert result == []
+
+    def test_openai_agent_loop_json_decode_error(self):
+        """
+        GOAL: Test handling of malformed JSON in tool call arguments
+        GIVEN: Tool call with invalid JSON arguments
+        WHEN: execute_agent_loop_openai processes it
+        THEN: Handles JSON decode error gracefully
+        """
+        mock_client = Mock()
+
+        # First response: tool call with malformed JSON
+        mock_tool_call = Mock()
+        mock_tool_call.id = "call_123"
+        mock_tool_call.function.name = "search_knowledge_base"
+        mock_tool_call.function.arguments = '{invalid json}'  # Malformed
+
+        mock_message_1 = Mock()
+        mock_message_1.tool_calls = [mock_tool_call]
+        mock_choice_1 = Mock()
+        mock_choice_1.finish_reason = "tool_calls"
+        mock_choice_1.message = mock_message_1
+        mock_response_1 = Mock()
+        mock_response_1.choices = [mock_choice_1]
+        mock_response_1.usage = OpenAIUsage(100, 20)
+
+        # Second response: final answer
+        mock_message_2 = Mock()
+        mock_message_2.content = "Here is the answer"
+        mock_choice_2 = Mock()
+        mock_choice_2.finish_reason = "stop"
+        mock_choice_2.message = mock_message_2
+        mock_response_2 = Mock()
+        mock_response_2.choices = [mock_choice_2]
+        mock_response_2.usage = OpenAIUsage(120, 30)
+
+        mock_client.chat.completions.create = Mock(side_effect=[mock_response_1, mock_response_2])
+
+        with patch.object(step2_module, 'execute_tool') as mock_execute_tool:
+            mock_execute_tool.return_value = {"success": True}
+
+            result = step2_module.execute_agent_loop_openai(
+                client=mock_client,
+                model_name="gpt-4o",
+                messages=[{"role": "user", "content": "Test"}],
+                tools=[{"type": "function", "function": {"name": "search_knowledge_base"}}],
+                chatbot_id="chatbot-123",
+                temperature=0.7,
+                openai_api_key="fake_key",
+                db_resource="f/development/db",
+                max_iterations=5
+            )
+
+            # Should have handled the error and continued
+            assert result["reply_text"] == "Here is the answer"
+            # Tool should have been called with empty args
+            mock_execute_tool.assert_called_once()
+            call_args = mock_execute_tool.call_args
+            assert call_args.kwargs['arguments'] == {}
+
+    def test_gemini_agent_loop_with_tool_calls(self):
+        """
+        GOAL: Test Gemini agent loop executes tools and returns final response
+        GIVEN: Gemini client that returns function calls then final response
+        WHEN: execute_agent_loop_gemini is called
+        THEN: Tools are executed and final response is returned
+        """
+        mock_client = Mock()
+        mock_models = Mock()
+
+        # First response: function call
+        mock_fc = Mock()
+        mock_fc.name = "search_knowledge_base"
+        mock_fc.args = {"query": "test query"}
+
+        mock_part_1 = Mock()
+        mock_part_1.function_call = mock_fc
+
+        mock_candidate_1 = Mock()
+        mock_candidate_1.content = Mock()
+        mock_candidate_1.content.parts = [mock_part_1]
+
+        mock_response_1 = Mock()
+        mock_response_1.candidates = [mock_candidate_1]
+        mock_response_1.usage_metadata = UsageMetadata(100, 20)
+
+        # Second response: final answer (no function calls)
+        mock_part_2 = Mock()
+        # Part without function_call attribute
+        if hasattr(mock_part_2, 'function_call'):
+            delattr(mock_part_2, 'function_call')
+
+        mock_candidate_2 = Mock()
+        mock_candidate_2.content = Mock()
+        mock_candidate_2.content.parts = [mock_part_2]
+
+        mock_response_2 = Mock()
+        mock_response_2.candidates = [mock_candidate_2]
+        mock_response_2.text = "Based on the search, here is the answer"
+        mock_response_2.usage_metadata = UsageMetadata(120, 30)
+
+        mock_models.generate_content = Mock(side_effect=[mock_response_1, mock_response_2])
+        mock_client.models = mock_models
+
+        with patch.object(step2_module, 'execute_tool') as mock_execute_tool:
+            mock_execute_tool.return_value = {"success": True, "results": []}
+
+            result = step2_module.execute_agent_loop_gemini(
+                client=mock_client,
+                model_name="gemini-pro",
+                system_prompt="You are helpful",
+                user_message="Test question",
+                chat_history=[],
+                tools=[{"function": {"name": "search_knowledge_base"}}],
+                chatbot_id="chatbot-123",
+                temperature=0.7,
+                google_api_key="fake_key",
+                db_resource="f/development/db",
+                fallback_message_error="Error",
+                fallback_message_limit="Limit",
+                max_iterations=5
+            )
+
+            # Should have executed tool and returned final answer
+            assert result["reply_text"] == "Based on the search, here is the answer"
+            assert len(result["tool_executions"]) == 1
+            assert result["usage_info"]["tokens_input"] == 220  # 100 + 120
+            assert result["usage_info"]["tokens_output"] == 50  # 20 + 30
+            assert result["usage_info"]["iterations"] == 2
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

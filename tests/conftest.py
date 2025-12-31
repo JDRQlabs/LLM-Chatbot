@@ -480,3 +480,87 @@ def pytest_collection_modifyitems(config, items):
         # Auto-mark integration tests
         if "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
+
+
+# ============================================================================
+# EMBEDDING FIXTURES
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def real_embeddings() -> Dict[str, Any]:
+    """
+    Load pre-computed real embeddings from fixture file.
+
+    These embeddings were generated using OpenAI's text-embedding-ada-002 model.
+    Use this fixture for tests that need realistic embedding data without
+    making API calls.
+
+    Returns:
+        Dict with 'metadata', 'documents', and 'queries' keys.
+        If fixture file doesn't exist, returns mock embeddings.
+    """
+    import json
+
+    fixture_path = Path(__file__).parent / "fixtures" / "embeddings.json"
+
+    if fixture_path.exists():
+        with open(fixture_path) as f:
+            return json.load(f)
+
+    # Return mock embeddings if fixture doesn't exist
+    # This allows tests to run even without generating real embeddings
+    mock_embedding = [0.1] * 1536
+
+    return {
+        "metadata": {
+            "model": "mock",
+            "dimensions": 1536,
+            "description": "Mock embeddings - run generate_embeddings.py to create real ones"
+        },
+        "documents": [
+            {
+                "id": "doc_1",
+                "title": "Return Policy",
+                "content": "Our return policy allows returns within 30 days of purchase.",
+                "embedding": mock_embedding
+            }
+        ],
+        "queries": [
+            {
+                "id": "query_1",
+                "text": "How do I return an item?",
+                "expected_match": "doc_1",
+                "embedding": mock_embedding
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def openai_embedding_1536() -> list:
+    """
+    Valid 1536-dimensional embedding for testing.
+
+    Use this when you need a single embedding vector for tests.
+    """
+    return [0.1] * 1536
+
+
+@pytest.fixture
+def sample_document_with_embedding(real_embeddings) -> Dict[str, Any]:
+    """
+    Get a sample document with its real embedding.
+
+    Returns the first document from the fixture.
+    """
+    return real_embeddings["documents"][0]
+
+
+@pytest.fixture
+def sample_query_with_embedding(real_embeddings) -> Dict[str, Any]:
+    """
+    Get a sample query with its real embedding.
+
+    Returns the first query from the fixture.
+    """
+    return real_embeddings["queries"][0]

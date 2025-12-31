@@ -10,6 +10,7 @@ This module mocks:
 from typing import Dict, Any, List, Optional
 from unittest.mock import Mock
 import json
+import requests
 
 
 class WhatsAppMock:
@@ -81,7 +82,10 @@ class WhatsAppMock:
                 }
             }
             response.text = json.dumps(response.json.return_value)
-            response.raise_for_status.side_effect = Exception(self.failure_message)
+            # Raise HTTPError (subclass of RequestException) to match real requests behavior
+            http_error = requests.exceptions.HTTPError(self.failure_message)
+            http_error.response = response
+            response.raise_for_status.side_effect = http_error
             return response
         
         # Successful response

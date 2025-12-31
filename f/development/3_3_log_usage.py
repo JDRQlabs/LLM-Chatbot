@@ -185,10 +185,12 @@ def _get_cost_per_1k_tokens(provider: str, model: str) -> float:
     """
     
     # Pricing as of Dec 2024 (approximate)
+    # IMPORTANT: Order from most specific to least specific to avoid substring matching issues
+    # e.g., "gpt-4o-mini" must come before "gpt-4o" to avoid incorrect matches
     pricing = {
         "openai": {
-            "gpt-4o": 0.005,
             "gpt-4o-mini": 0.0002,
+            "gpt-4o": 0.005,
             "gpt-4-turbo": 0.01,
             "gpt-3.5-turbo": 0.0015,
         },
@@ -201,11 +203,11 @@ def _get_cost_per_1k_tokens(provider: str, model: str) -> float:
             "claude-3-haiku": 0.00025,
         },
     }
-    
+
     provider_lower = provider.lower()
     model_lower = model.lower()
-    
-    # Try exact match first
+
+    # Match using substring - order matters! More specific models first
     if provider_lower in pricing:
         for model_key, cost in pricing[provider_lower].items():
             if model_key in model_lower:

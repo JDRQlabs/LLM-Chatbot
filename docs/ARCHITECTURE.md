@@ -17,7 +17,7 @@ A Multi-tenant WhatsApp Chatbot Platform (SaaS) inspired by FastBots.ai.
   - Stores Tenant configs, User context, and Chat Logs.
 - **Vector Store:** pgvector
   - Stores embeddings of uploaded PDFs/Text for RAG.
-- **AI/LLM:** OpenAI (GPT-4o / GPT-4o-mini)
+- **AI/LLM:** OpenAI (Gemini / OpenAI )
   - Handles reasoning, tool selection, and text generation.
 - **Tunneling:** Ngrok
   - Exposes local Docker containers to the public internet during dev.
