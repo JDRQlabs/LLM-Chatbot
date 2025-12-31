@@ -357,16 +357,16 @@ graph TD
 ##### API Testing
 
 **Unit Tests:**
-- [ ] Create test suite for auth endpoints (`tests/api/auth.test.js`)
-  - [ ] Test registration with valid/invalid data
-  - [ ] Test login with correct/incorrect credentials
-  - [ ] Test JWT token generation and verification
-- [ ] Create test suite for chatbot endpoints (`tests/api/chatbots.test.js`)
-  - [ ] Test CRUD operations
-  - [ ] Test authorization (user can't access other org's chatbots)
-  - [ ] Test pagination
-- [ ] Create test suite for history endpoint (`tests/api/history.test.js`)
-  - [ ] Test cursor-based pagination
+- [x] Create test suite for auth endpoints (`tests/api/auth.test.js`)
+  - [x] Test registration with valid/invalid data
+  - [x] Test login with correct/incorrect credentials
+  - [x] Test JWT token generation and verification
+- [x] Create test suite for chatbot endpoints (`tests/api/chatbots.test.js`)
+  - [x] Test CRUD operations
+  - [x] Test authorization (user can't access other org's chatbots)
+  - [x] Test pagination
+- [x] Create test suite for history endpoint (`tests/api/history.test.js`)
+  - [x] Test cursor-based pagination
   - [ ] Test with large datasets (10k+ messages)
   - [ ] Verify performance (< 200ms for 50 messages)
 

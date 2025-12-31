@@ -87,21 +87,26 @@ app.use((req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Whatsapp Chatbot API Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Database host: ${process.env.DB_HOST || 'localhost'}`);
-  console.log(`Windmill URL: ${process.env.WINDMILL_URL || 'http://localhost:8000'}`);
-});
+// Start server only when run directly (not imported for testing)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Whatsapp Chatbot API Server running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Database host: ${process.env.DB_HOST || 'localhost'}`);
+    console.log(`Windmill URL: ${process.env.WINDMILL_URL || 'http://localhost:8000'}`);
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    process.exit(0);
+  });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully...');
-  process.exit(0);
-});
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully...');
+    process.exit(0);
+  });
+}
+
+// Export app for testing
+module.exports = app;
