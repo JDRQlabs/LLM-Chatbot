@@ -40,11 +40,12 @@ get_auth_token() {
     echo "Getting authentication token..."
     TOKEN=$(curl -s -X POST "$WINDMILL_URL/api/auth/login" \
         -H "Content-Type: application/json" \
-        -d "{\"email\": \"$WINDMILL_EMAIL\", \"password\": \"$WINDMILL_PASSWORD\"}" \
-        | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+        -d "{\"email\": \"$WINDMILL_EMAIL\", \"password\": \"$WINDMILL_PASSWORD\"}")
 
-    if [ -z "$TOKEN" ]; then
+    # Token is returned as plain text, not JSON
+    if [ -z "$TOKEN" ] || echo "$TOKEN" | grep -q "error"; then
         echo "ERROR: Failed to get auth token. Check credentials."
+        echo "Response: $TOKEN"
         exit 1
     fi
     echo "Got auth token"
@@ -84,16 +85,15 @@ create_api_token() {
     echo "Creating API token..."
 
     # Create a token that doesn't expire (or expires far in the future)
-    local response=$(curl -s -X POST "$WINDMILL_URL/api/users/tokens/create" \
+    # API returns the token as plain text, not JSON
+    API_TOKEN=$(curl -s -X POST "$WINDMILL_URL/api/users/tokens/create" \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
         -d '{"label": "webhook-ingress", "expiration": null}')
 
-    API_TOKEN=$(echo "$response" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
-
-    if [ -z "$API_TOKEN" ]; then
+    if [ -z "$API_TOKEN" ] || echo "$API_TOKEN" | grep -q "error"; then
         echo "ERROR: Failed to create API token"
-        echo "Response: $response"
+        echo "Response: $API_TOKEN"
         exit 1
     fi
     echo "API token created successfully"
