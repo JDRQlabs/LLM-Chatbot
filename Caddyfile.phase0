@@ -1,11 +1,12 @@
 # Production Caddyfile for WhatsApp Chatbot Platform
 #
-# This configuration supports automatic HTTPS via Let's Encrypt.
-# Set DOMAIN environment variable to your domain name.
+# Subdomain-based routing with automatic HTTPS via Let's Encrypt.
+# Set DOMAIN environment variable to your base domain (e.g., jdsoftwarelabs.com)
 #
-# Usage options:
-#   1. Single domain with path-based routing (default)
-#   2. Subdomains for each service (uncomment subdomain blocks)
+# Subdomains:
+#   - api.{DOMAIN}      → Backend API + WhatsApp webhooks
+#   - windmill.{DOMAIN} → Windmill admin dashboard
+#   - {DOMAIN} (root)   → Reserved for future frontend
 
 # Global options
 {
@@ -17,11 +18,9 @@
 }
 
 # =============================================================================
-# HTTP-only server block for IP-based access (testing/development)
-# This allows direct IP access without SSL issues
+# HTTP-only fallback for IP-based access (testing/development)
 # =============================================================================
 :80 {
-    # Security headers (without HSTS since HTTP only)
     header {
         X-Frame-Options "DENY"
         X-Content-Type-Options "nosniff"
@@ -30,7 +29,7 @@
         -Server
     }
 
-    # WhatsApp Webhook endpoint (strip /webhook prefix since server uses root)
+    # WhatsApp Webhook endpoint
     handle /webhook* {
         uri strip_prefix /webhook
         reverse_proxy webhook-ingress:3000
@@ -42,16 +41,11 @@
         reverse_proxy whatsapp_chatbot_api:4000
     }
 
-    # NOTE: Windmill doesn't support subpath routing (/windmill) - frontend assets break.
-    # For production, use subdomain routing: windmill.yourdomain.com (see OPTION 2 below)
-    # For now, access Windmill directly at http://<server-ip>:8000
-
-    # Health check endpoint
+    # Health check
     handle /health {
         respond "OK" 200
     }
 
-    # Default: Return 404
     handle {
         respond "Not Found" 404
     }
@@ -66,56 +60,45 @@
 }
 
 # =============================================================================
-# HTTPS domain block - Only used when a real domain is configured
-# (Comment out or remove the :80 block above for production with real domain)
+# API Subdomain (api.jdsoftwarelabs.com)
+# Handles both Management API and WhatsApp webhooks
 # =============================================================================
-
-{$DOMAIN:localhost} {
-    # Security headers
+api.{$DOMAIN} {
     header {
-        # Enable HSTS
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        # Prevent clickjacking
         X-Frame-Options "DENY"
-        # Prevent MIME type sniffing
         X-Content-Type-Options "nosniff"
-        # XSS Protection
         X-XSS-Protection "1; mode=block"
-        # Referrer policy
         Referrer-Policy "strict-origin-when-cross-origin"
-        # Remove server header
         -Server
     }
 
-    # WhatsApp Webhook endpoint (strip /webhook prefix since server uses root)
+    # WhatsApp Webhook endpoint
+    # Meta will call: https://api.jdsoftwarelabs.com/webhook
     handle /webhook* {
         uri strip_prefix /webhook
         reverse_proxy webhook-ingress:3000
     }
 
     # Management API
+    # Frontend will call: https://api.jdsoftwarelabs.com/api/*
     handle /api/* {
         uri strip_prefix /api
         reverse_proxy whatsapp_chatbot_api:4000
     }
 
-    # NOTE: Windmill doesn't support subpath routing (/windmill) - frontend assets break.
-    # For production, use subdomain routing: windmill.yourdomain.com (see OPTION 2 below)
-    # For now, access Windmill directly at http://<server-ip>:8000
-
-    # Health check endpoint
+    # Health check
     handle /health {
         respond "OK" 200
     }
 
-    # Default: Return 404 for unknown paths
+    # Default
     handle {
         respond "Not Found" 404
     }
 
-    # Access logging
     log {
-        output file /data/access.log {
+        output file /data/access-api.log {
             roll_size 10mb
             roll_keep 5
         }
@@ -124,49 +107,38 @@
 }
 
 # =============================================================================
-# OPTION 2: Subdomain-based routing (uncomment to use)
+# Windmill Subdomain (windmill.jdsoftwarelabs.com)
+# Admin dashboard with basic auth protection
 # =============================================================================
+windmill.{$DOMAIN} {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
 
-# # API subdomain
-# api.{$DOMAIN} {
-#     header {
-#         Strict-Transport-Security "max-age=31536000; includeSubDomains"
-#         X-Frame-Options "DENY"
-#         X-Content-Type-Options "nosniff"
-#     }
-#
-#     reverse_proxy whatsapp_chatbot_api:4000
-# }
-#
-# # Webhook subdomain
-# webhook.{$DOMAIN} {
-#     header {
-#         Strict-Transport-Security "max-age=31536000; includeSubDomains"
-#         X-Content-Type-Options "nosniff"
-#     }
-#
-#     reverse_proxy webhook-ingress:3000
-# }
-#
-# # Windmill subdomain (internal admin)
-# windmill.{$DOMAIN} {
-#     header {
-#         Strict-Transport-Security "max-age=31536000; includeSubDomains"
-#         X-Frame-Options "DENY"
-#     }
-#
-#     # Require authentication for Windmill
-#     basicauth {
-#         admin $2a$14$... # Use: caddy hash-password
-#     }
-#
-#     reverse_proxy windmill_server:8000
-# }
+    # Basic auth for Windmill admin access
+    # Credentials: admin / windmill-admin-2025
+    # To change: docker exec caddy caddy hash-password --plaintext 'new-password'
+    basic_auth {
+        admin $2a$14$Zkx5U/hq6t8KoEnKdNzy0eTxXjYj7Nf6zJmXoXdL1UpqYP9lPvnOe
+    }
+
+    reverse_proxy windmill_server:8000
+
+    log {
+        output file /data/access-windmill.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
 
 # =============================================================================
-# Rate limiting
+# Rate limiting notes
 # =============================================================================
-# Note: Rate limiting is implemented at the application level using
+# Rate limiting is implemented at the application level using
 # express-rate-limit in api-server/middleware/rateLimit.js
 #
 # Current limits:
@@ -174,8 +146,3 @@
 # - General API: 100 requests per minute per user
 # - Knowledge uploads: 10 uploads per hour per organization
 # - Webhooks: 1000 requests per minute (for WhatsApp)
-#
-# For additional proxy-level rate limiting, consider:
-# 1. Building custom Caddy with caddy-rate-limit plugin
-# 2. Using Hetzner Load Balancer with rate limits (Phase 1)
-# 3. Adding nginx in front of Caddy for advanced features
