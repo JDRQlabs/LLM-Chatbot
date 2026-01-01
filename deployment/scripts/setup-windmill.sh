@@ -130,14 +130,93 @@ create_api_token() {
     API_TOKEN=$(curl -s $CURL_AUTH_ARGS -X POST "$WINDMILL_URL/api/users/tokens/create" \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
-        -d '{"label": "webhook-ingress", "expiration": null}')
+        -d '{"label": "webhook-ingress-prod", "expiration": null}')
 
     if [ -z "$API_TOKEN" ] || echo "$API_TOKEN" | grep -q "error"; then
         echo "ERROR: Failed to create API token"
         echo "Response: $API_TOKEN"
         exit 1
     fi
-    echo "API token created successfully"
+
+    # Validate the token works by making a test API call
+    echo "Validating API token..."
+    local validate_response
+    validate_response=$(curl -s $CURL_AUTH_ARGS -w "%{http_code}" -o /dev/null \
+        -H "Authorization: Bearer $API_TOKEN" \
+        "$WINDMILL_URL/api/w/$WORKSPACE_ID/flows/list" 2>&1)
+
+    if [ "$validate_response" != "200" ]; then
+        echo "ERROR: API token validation failed (HTTP $validate_response)"
+        echo "Token: $API_TOKEN"
+        exit 1
+    fi
+
+    echo "API token created and validated successfully"
+}
+
+# Function to create or update a Windmill variable
+create_variable() {
+    local var_path="$1"
+    local var_value="$2"
+    local var_description="${3:-}"
+    local is_secret="${4:-true}"
+
+    if [ -z "$var_value" ]; then
+        echo "  Skipping $var_path (no value provided)"
+        return 0
+    fi
+
+    echo "  Creating variable: $var_path"
+
+    # Check if variable exists
+    local exists_code
+    exists_code=$(curl -s $CURL_AUTH_ARGS -w "%{http_code}" -o /dev/null \
+        -H "Authorization: Bearer $TOKEN" \
+        "$WINDMILL_URL/api/w/$WORKSPACE_ID/variables/get/$var_path" 2>&1)
+
+    if [ "$exists_code" = "200" ]; then
+        # Update existing variable
+        curl -s $CURL_AUTH_ARGS -X POST "$WINDMILL_URL/api/w/$WORKSPACE_ID/variables/update/$var_path" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"value\": \"$var_value\"}" > /dev/null
+        echo "    Updated existing variable"
+    else
+        # Create new variable
+        local response
+        response=$(curl -s $CURL_AUTH_ARGS -X POST "$WINDMILL_URL/api/w/$WORKSPACE_ID/variables/create" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"path\": \"$var_path\",
+                \"value\": \"$var_value\",
+                \"is_secret\": $is_secret,
+                \"description\": \"$var_description\"
+            }")
+
+        if echo "$response" | grep -q "error"; then
+            echo "    WARNING: Failed to create variable: $response"
+        else
+            echo "    Created new variable"
+        fi
+    fi
+}
+
+# Function to setup required Windmill variables
+setup_variables() {
+    echo "Setting up Windmill variables..."
+
+    # Read values from environment (these should be set in .env or passed to the script)
+    local google_api_key="${GOOGLE_API_KEY:-}"
+    local openai_api_key="${OPENAI_API_KEY:-}"
+    local slack_webhook="${SLACK_ALERT_WEBHOOK:-}"
+
+    # Create variables used by the flows
+    create_variable "u/admin/GoogleAPI_JD" "$google_api_key" "Google API Key for Gemini LLM" "true"
+    create_variable "u/admin/OpenAI_API_Key" "$openai_api_key" "OpenAI API Key" "true"
+    create_variable "u/admin/SLACK_ALERT_WEBHOOK" "$slack_webhook" "Slack webhook for alerts" "true"
+
+    echo "Variables setup complete"
 }
 
 # Function to sync scripts using wmill CLI
@@ -224,11 +303,15 @@ echo "Step 5: Sync Scripts"
 sync_scripts
 
 echo ""
-echo "Step 6: Get Flow Endpoint"
+echo "Step 6: Setup Variables"
+setup_variables
+
+echo ""
+echo "Step 7: Get Flow Endpoint"
 get_flow_endpoint
 
 echo ""
-echo "Step 7: Update .env File"
+echo "Step 8: Update .env File"
 update_env_file
 
 echo ""
