@@ -65,14 +65,10 @@ def main(
                     "webhook_event_id": webhook_event_id,
                 }
 
-            # If currently processing, reject (prevent concurrent processing)
-            if status == "processing":
-                print(f"Message currently being processed: {message_id}")
-                return {
-                    "proceed": False,
-                    "reason": "Currently Processing",
-                    "webhook_event_id": webhook_event_id,
-                }
+            # NOTE: We do NOT check for 'processing' status here.
+            # Express (webhook-server) handles idempotency via INSERT ... ON CONFLICT.
+            # When we reach this point, Express already set status='processing' and
+            # this is the legitimate Windmill invocation that should process the message.
 
             # If failed, allow retry - update status to processing
             if status == "failed":
