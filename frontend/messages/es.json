@@ -1,0 +1,92 @@
+{
+    "Navigation": {
+        "features": "Características",
+        "pricing": "Precios",
+        "login": "Iniciar Sesión",
+        "getStarted": "Comenzar",
+        "viewDemo": "Ver Demo",
+        "startTrial": "Prueba Gratis"
+    },
+    "Hero": {
+        "badge": "Beta Pública",
+        "title": "Automatiza WhatsApp con Agentes IA",
+        "description": "Convierte comentarios en leads, automatiza el soporte y cierra ventas 24/7 usando chatbots inteligentes potenciados por RAG."
+    },
+    "Features": {
+        "tag": "Características Clave",
+        "title": "Todo lo que necesitas para escalar",
+        "subtitle": "Nuestra plataforma combina el poder de los LLMs con la API oficial de WhatsApp para una experiencia sin interrupciones.",
+        "smartReplies": {
+            "title": "Respuestas Inteligentes",
+            "description": "IA que entiende el contexto y la intención, no solo palabras clave. Potenciado por Gemini y OpenAI."
+        },
+        "instantSetup": {
+            "title": "Configuración Instantánea",
+            "description": "Conecta tu WhatsApp Business API en minutos. Sin código."
+        },
+        "knowledgeBase": {
+            "title": "Base de Conocimiento RAG",
+            "description": "Sube PDFs o rastrea tu sitio web. El bot aprende de tus datos al instante."
+        }
+    },
+    "Pricing": {
+        "title": "Precios Flexibles",
+        "subtitle": "Empieza gratis, mejora según crezcas. Todos los planes incluyen 14 días de prueba (100 mensajes).",
+        "plans": {
+            "basic": {
+                "name": "Básico",
+                "price": "$499",
+                "period": "/mes",
+                "description": "Perfecto para pequeños negocios.",
+                "features": [
+                    "Respuestas automáticas 24/7",
+                    "Incluye 1,000 mensajes/mes",
+                    "Soporte por Email",
+                    "Instrucciones personalizables"
+                ],
+                "cta": "Prueba Básico"
+            },
+            "professional": {
+                "name": "Profesional",
+                "price": "$1,499",
+                "period": "/mes",
+                "description": "Para equipos en crecimiento.",
+                "features": [
+                    "Todo lo del plan Básico",
+                    "Incluye 5,000 mensajes/mes",
+                    "Soporte Prioritario",
+                    "Integración MCP personalizable"
+                ],
+                "cta": "Prueba Profesional"
+            },
+            "enterprise": {
+                "name": "Empresarial",
+                "price": "$3,999",
+                "period": "/mes",
+                "description": "Máxima potencia y soporte dedicado.",
+                "features": [
+                    "Todo lo del plan Profesional",
+                    "Incluye 25,000 mensajes/mes",
+                    "Base de Conocimiento RAG",
+                    "Gerente de cuenta dedicado"
+                ],
+                "cta": "Contactar Ventas"
+            }
+        }
+    },
+    "Testimonials": {
+        "title": "Confianza de empresas en todo el mundo",
+        "cta": "Leer Historias de Éxito"
+    },
+    "CTA": {
+        "title": "¿Listo para automatizar tu crecimiento?",
+        "description": "Únete a cientos de empresas que usan IA para escalar su soporte y ventas.",
+        "button": "Comenzar Gratis",
+        "note": "No se requiere tarjeta. 14 días de prueba."
+    },
+    "Footer": {
+        "copyright": "© 2025 Chatbot Platform. Todos los derechos reservados.",
+        "terms": "Términos de Servicio",
+        "privacy": "Privacidad"
+    }
+}

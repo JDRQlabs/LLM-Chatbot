@@ -1,0 +1,92 @@
+{
+    "Navigation": {
+        "features": "Features",
+        "pricing": "Pricing",
+        "login": "Login",
+        "getStarted": "Get Started",
+        "viewDemo": "View Demo",
+        "startTrial": "Start Free Trial"
+    },
+    "Hero": {
+        "badge": "Now in Public Beta",
+        "title": "Automate WhatsApp with AI Agents",
+        "description": "Turn comments into leads, automate support, and close sales 24/7 using our intelligent RAG-powered chatbots."
+    },
+    "Features": {
+        "tag": "Key Features",
+        "title": "Everything you need to scale support",
+        "subtitle": "Our platform combines the power of LLMs with official WhatsApp APIs to deliver a seamless experience.",
+        "smartReplies": {
+            "title": "Smart Replies",
+            "description": "AI that understands context and intent, not just keywords. Powered by Gemini & OpenAI."
+        },
+        "instantSetup": {
+            "title": "Instant Setup",
+            "description": "Connect your WhatsApp Business API in minutes. No coding required."
+        },
+        "knowledgeBase": {
+            "title": "RAG Knowledge Base",
+            "description": "Upload PDFs or crawl your website. The bot learns from your data instantly."
+        }
+    },
+    "Pricing": {
+        "title": "Flexible Pricing",
+        "subtitle": "Start free, upgrade as you grow. All plans include 14-day free trial (100 messages).",
+        "plans": {
+            "basic": {
+                "name": "Basic",
+                "price": "$499",
+                "period": "/mo",
+                "description": "Perfect for small businesses starting out.",
+                "features": [
+                    "24/7 Auto Replies",
+                    "Includes 1,000 messages/mo",
+                    "Email Support",
+                    "Customizable System Prompt"
+                ],
+                "cta": "Start Basic Trial"
+            },
+            "professional": {
+                "name": "Professional",
+                "price": "$1,499",
+                "period": "/mo",
+                "description": "For growing teams needing more power.",
+                "features": [
+                    "Everything in Basic",
+                    "Includes 5,000 messages/mo",
+                    "Priority Support",
+                    "Customizable MCP Tools"
+                ],
+                "cta": "Start Pro Trial"
+            },
+            "enterprise": {
+                "name": "Enterprise",
+                "price": "$3,999",
+                "period": "/mo",
+                "description": "Maximum power and dedicated support.",
+                "features": [
+                    "Everything in Professional",
+                    "Includes 25,000 messages/mo",
+                    "RAG Knowledge Base",
+                    "Dedicated Account Manager"
+                ],
+                "cta": "Contact Sales"
+            }
+        }
+    },
+    "Testimonials": {
+        "title": "Trusted by businesses worldwide",
+        "cta": "Read Success Stories"
+    },
+    "CTA": {
+        "title": "Ready to automate your growth?",
+        "description": "Join hundreds of businesses using AI to scale their customer support and sales.",
+        "button": "Get Started for Free",
+        "note": "No credit card required. 14-day free trial."
+    },
+    "Footer": {
+        "copyright": "© 2025 Chatbot Platform. All rights reserved.",
+        "terms": "Terms of Service",
+        "privacy": "Privacy"
+    }
+}
