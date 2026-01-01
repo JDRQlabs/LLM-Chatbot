@@ -226,12 +226,18 @@ healthcheck: validate
 
 # Initialize database schema, migrations, and seed data
 # Matches local db/manage_db.sh behavior: create -> migrations -> seed
+# Syncs .env and db/ files first to ensure latest schema and credentials
 db-init: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
 	if [ -z "$$IP" ]; then \
 		echo "Server $(SERVER_NAME) not found"; \
 		exit 1; \
 	fi; \
+	echo "Syncing .env and db/ files to $$IP..."; \
+	rsync -avz -e "ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no" \
+		$(SRC_DIR)/.env $(SRC_DIR)/db/ ubuntu@$$IP:~/src/; \
+	rsync -avz -e "ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no" \
+		$(SRC_DIR)/db/ ubuntu@$$IP:~/src/db/; \
 	echo "Initializing database on $$IP..."; \
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP '\
 		cd ~/src && \
@@ -243,12 +249,13 @@ db-init: validate
 			docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < "$$f"; \
 		done && \
 		echo "Seeding data..." && \
-		source .env && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
+		set -a && source .env && set +a && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
 		echo "Database initialized successfully!" \
 	'
 
 # Reset database (drop, create, migrations, seed)
 # Matches local db/manage_db.sh reset behavior
+# Syncs .env and db/ files first to ensure latest schema and credentials
 db-reset: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
 	if [ -z "$$IP" ]; then \
@@ -257,6 +264,11 @@ db-reset: validate
 	fi; \
 	echo "WARNING: This will DELETE all data in the database!"; \
 	read -p "Are you sure? (y/n) " confirm && [ "$$confirm" = "y" ] && \
+	echo "Syncing .env and db/ files to $$IP..." && \
+	rsync -avz -e "ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no" \
+		$(SRC_DIR)/.env ubuntu@$$IP:~/src/ && \
+	rsync -avz -e "ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no" \
+		$(SRC_DIR)/db/ ubuntu@$$IP:~/src/db/ && \
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP '\
 		cd ~/src && \
 		echo "Dropping tables..." && \
@@ -269,7 +281,7 @@ db-reset: validate
 			docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < "$$f"; \
 		done && \
 		echo "Seeding data..." && \
-		source .env && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
+		set -a && source .env && set +a && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
 		echo "Database reset complete!" \
 	'
 
