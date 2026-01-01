@@ -7,6 +7,36 @@
         "viewDemo": "View Demo",
         "startTrial": "Start Free Trial"
     },
+    "Auth": {
+        "login": {
+            "title": "Welcome back",
+            "subtitle": "Enter your email to sign in to your account",
+            "email": "Email",
+            "password": "Password",
+            "submit": "Sign In",
+            "noAccount": "Don't have an account?",
+            "register": "Sign up"
+        },
+        "register": {
+            "title": "Create an account",
+            "subtitle": "Enter your email below to create your account",
+            "email": "Email",
+            "password": "Password",
+            "submit": "Sign Up",
+            "terms": "By clicking continue, you agree to our Terms of Service and Privacy Policy.",
+            "hasAccount": "Already have an account?",
+            "login": "Login"
+        },
+        "waitlist": {
+            "title": "Join the Waitlist",
+            "subtitle": "We are currently in closed beta. Enter your email to request access.",
+            "email": "Email Address",
+            "submit": "Join Waitlist",
+            "successTitle": "You're on the list!",
+            "successMessage": "Thank you for your interest. We will notify you as soon as a spot opens up.",
+            "backToHome": "Back to Home"
+        }
+    },
     "Hero": {
         "badge": "Now in Public Beta",
         "title": "Automate WhatsApp with AI Agents",

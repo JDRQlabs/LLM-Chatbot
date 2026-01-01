@@ -7,6 +7,36 @@
         "viewDemo": "Ver Demo",
         "startTrial": "Prueba Gratis"
     },
+    "Auth": {
+        "login": {
+            "title": "Bienvenido de nuevo",
+            "subtitle": "Ingresa tu correo para iniciar sesión",
+            "email": "Correo electrónico",
+            "password": "Contraseña",
+            "submit": "Iniciar sesión",
+            "noAccount": "¿No tienes una cuenta?",
+            "register": "Regístrate"
+        },
+        "register": {
+            "title": "Crear una cuenta",
+            "subtitle": "Ingresa tu correo abajo para crear tu cuenta",
+            "email": "Correo electrónico",
+            "password": "Contraseña",
+            "submit": "Registrarse",
+            "terms": "Al continuar, aceptas nuestros Términos de Servicio y Política de Privacidad.",
+            "hasAccount": "¿Ya tienes una cuenta?",
+            "login": "Iniciar sesión"
+        },
+        "waitlist": {
+            "title": "Únete a la lista de espera",
+            "subtitle": "Actualmente estamos en beta cerrada. Ingresa tu correo para solicitar acceso.",
+            "email": "Correo electrónico",
+            "submit": "Unirse a la lista",
+            "successTitle": "¡Estás en la lista!",
+            "successMessage": "Gracias por tu interés. Te notificaremos tan pronto como se abra un lugar.",
+            "backToHome": "Volver al inicio"
+        }
+    },
     "Hero": {
         "badge": "Beta Pública",
         "title": "Automatiza WhatsApp con Agentes IA",
