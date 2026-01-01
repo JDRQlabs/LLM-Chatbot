@@ -327,6 +327,32 @@ recreate-service: validate
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
 		"cd ~/src && docker compose -f docker-compose.phase0.yml up -d --force-recreate $(SERVICE)"
 
+# Rebuild and restart a specific service (forces container rebuild)
+rebuild-service: validate
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make rebuild-service SERVICE=<service-name>"; \
+		exit 1; \
+	fi; \
+	IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Rebuilding $(SERVICE) on $$IP (--no-cache)..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
+		"cd ~/src && docker compose -f docker-compose.phase0.yml build --no-cache $(SERVICE) && docker compose -f docker-compose.phase0.yml up -d --force-recreate $(SERVICE)"
+
+# Deploy and rebuild frontend (use after any frontend code changes)
+deploy-frontend: deploy
+	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Rebuilding frontend on $$IP..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
+		"cd ~/src && docker compose -f docker-compose.phase0.yml build --no-cache frontend && docker compose -f docker-compose.phase0.yml up -d --force-recreate frontend"
+
 # Full deployment workflow
 full-deploy: deploy volume-setup start-prod healthcheck
 	@echo "Full deployment complete!"

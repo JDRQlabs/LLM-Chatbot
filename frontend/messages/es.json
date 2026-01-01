@@ -66,7 +66,7 @@
             "basic": {
                 "name": "Básico",
                 "price": "$499",
-                "period": "/mes",
+                "period": "MXN/mes",
                 "description": "Perfecto para pequeños negocios.",
                 "features": [
                     "Respuestas automáticas 24/7",
@@ -79,7 +79,7 @@
             "professional": {
                 "name": "Profesional",
                 "price": "$1,499",
-                "period": "/mes",
+                "period": "MXN/mes",
                 "description": "Para equipos en crecimiento.",
                 "features": [
                     "Todo lo del plan Básico",
@@ -92,7 +92,7 @@
             "enterprise": {
                 "name": "Empresarial",
                 "price": "$3,999",
-                "period": "/mes",
+                "period": "MXN/mes",
                 "description": "Máxima potencia y soporte dedicado.",
                 "features": [
                     "Todo lo del plan Profesional",

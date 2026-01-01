@@ -65,8 +65,8 @@
         "plans": {
             "basic": {
                 "name": "Basic",
-                "price": "$499",
-                "period": "/mo",
+                "price": "$29.99",
+                "period": "USD/mo",
                 "description": "Perfect for small businesses starting out.",
                 "features": [
                     "24/7 Auto Replies",
@@ -78,8 +78,8 @@
             },
             "professional": {
                 "name": "Professional",
-                "price": "$1,499",
-                "period": "/mo",
+                "price": "$89.99",
+                "period": "USD/mo",
                 "description": "For growing teams needing more power.",
                 "features": [
                     "Everything in Basic",
@@ -91,8 +91,8 @@
             },
             "enterprise": {
                 "name": "Enterprise",
-                "price": "$3,999",
-                "period": "/mo",
+                "price": "$269.99",
+                "period": "USD/mo",
                 "description": "Maximum power and dedicated support.",
                 "features": [
                     "Everything in Professional",
