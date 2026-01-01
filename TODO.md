@@ -350,10 +350,11 @@ graph TD
 
 **Caddy/Nginx Setup:**
 - [x] Install Caddy or Nginx on host (or run in Docker) - Caddy in docker-compose.phase0.yml
-- [x] Configure reverse proxy routing:
-  - [x] `/api/*` → `whatsapp_chatbot_api` container (port 4000)
-  - [x] `/webhook*` → `webhook-ingress` container (port 3000)
-  - [x] `/windmill*` → `windmill_server` container (port 8000)
+- [x] Configure reverse proxy routing (subdomain-based):
+  - [x] `api.{DOMAIN}/api/*` → `whatsapp_chatbot_api` container (port 4000)
+  - [x] `api.{DOMAIN}/webhook*` → `webhook-ingress` container (port 3000)
+  - [x] `windmill.{DOMAIN}/*` → `windmill_server` container (port 8000)
+  - [x] Basic auth on Windmill UI (excludes /api/* for CLI tools)
 - [x] Set up SSL certificates (Let's Encrypt via Caddy, or manual certs)
 - [x] Configure rate limiting at application level (express-rate-limit)
   - [x] Auth endpoints: 5 requests per 15 minutes
@@ -361,7 +362,7 @@ graph TD
   - [x] Knowledge uploads: 10 uploads per hour
   - [x] Webhooks: 1000 requests per minute
 - [x] Add security headers (HSTS, X-Frame-Options, etc.)
-- [ ] Test routing and SSL
+- [x] Test routing and SSL (healthcheck.sh passes all checks)
 
 ##### API Testing
 

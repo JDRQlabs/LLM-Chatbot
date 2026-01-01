@@ -117,10 +117,15 @@ windmill.{$DOMAIN} {
         -Server
     }
 
-    # Basic auth for Windmill admin access
+    # Basic auth for Windmill admin UI, excluding API paths
+    # API paths are protected by Windmill's own Bearer token authentication
+    # This allows CLI tools and scripts to access /api/* without basic auth
     # Credentials: admin / windmill-admin-2025
     # To change: docker exec caddy caddy hash-password --plaintext 'new-password'
-    basic_auth {
+    @notApi {
+        not path /api/*
+    }
+    basic_auth @notApi {
         admin $2a$14$KDGe1MwIOGeCQqbWfIDDiO75C7mZ/nTJyr.X3OzFQaIQmc07AtzZi
     }
 

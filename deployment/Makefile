@@ -351,6 +351,10 @@ create-admin: validate
 # Setup Windmill (create workspace, token, sync scripts)
 # Run this after Windmill is healthy on a fresh deployment
 # Usage: make setup-windmill
+#
+# Note: Caddy's basic_auth is configured to EXCLUDE /api/* paths, so Windmill's API
+# is accessible without basic auth. The API is still protected by Windmill's own
+# Bearer token authentication. Only the admin UI requires basic auth.
 setup-windmill: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
 	if [ -z "$$IP" ]; then \
@@ -362,12 +366,22 @@ setup-windmill: validate
 	echo "  1. Create a 'production' workspace"; \
 	echo "  2. Generate an API token"; \
 	echo "  3. Sync scripts and flows"; \
+	echo "  4. Update .env with generated credentials"; \
 	echo ""; \
-	WINDMILL_URL="http://$$IP:8000" \
+	WINDMILL_URL="https://windmill.$${DOMAIN:-jdsoftwarelabs.com}" \
 	WORKSPACE_NAME="production" \
 	WORKSPACE_ID="production" \
 	SCRIPTS_DIR="$(SRC_DIR)" \
-	./scripts/setup-windmill.sh
+	./scripts/setup-windmill.sh; \
+	echo ""; \
+	echo "Syncing updated .env to server..."; \
+	rsync -avz \
+		-e "ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no" \
+		$(SRC_DIR)/.env ubuntu@$$IP:~/src/.env; \
+	echo ""; \
+	echo "Restarting webhook-ingress to pick up new credentials..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
+		"cd ~/src && docker compose -f docker-compose.phase0.yml restart webhook-ingress"
 
 # Show help
 help:

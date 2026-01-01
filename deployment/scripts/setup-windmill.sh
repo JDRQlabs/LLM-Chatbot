@@ -43,6 +43,17 @@ ENV_FILE="${ENV_FILE:-$SCRIPTS_DIR/.env}"
 MAX_RETRIES=30
 RETRY_INTERVAL=5
 
+# Basic auth for Caddy proxy (optional - only needed when accessing via HTTPS subdomain)
+BASIC_AUTH_USER="${BASIC_AUTH_USER:-}"
+BASIC_AUTH_PASS="${BASIC_AUTH_PASS:-}"
+
+# Build curl auth args if basic auth credentials are provided
+CURL_AUTH_ARGS=""
+if [ -n "$BASIC_AUTH_USER" ] && [ -n "$BASIC_AUTH_PASS" ]; then
+    CURL_AUTH_ARGS="-u $BASIC_AUTH_USER:$BASIC_AUTH_PASS"
+    echo "Using basic auth for Caddy proxy"
+fi
+
 echo "=== Windmill Automated Setup ==="
 echo "URL: $WINDMILL_URL"
 echo "Workspace: $WORKSPACE_NAME ($WORKSPACE_ID)"
@@ -52,11 +63,13 @@ echo ""
 wait_for_windmill() {
     echo "Waiting for Windmill to be ready..."
     for i in $(seq 1 $MAX_RETRIES); do
-        if curl -s "$WINDMILL_URL/api/version" > /dev/null 2>&1; then
+        local http_code
+        http_code=$(curl -s $CURL_AUTH_ARGS -w "%{http_code}" -o /dev/null "$WINDMILL_URL/api/version" 2>&1)
+        if [ "$http_code" = "200" ]; then
             echo "Windmill is ready!"
             return 0
         fi
-        echo "  Attempt $i/$MAX_RETRIES - Windmill not ready yet..."
+        echo "  Attempt $i/$MAX_RETRIES - Windmill not ready yet (HTTP $http_code)..."
         sleep $RETRY_INTERVAL
     done
     echo "ERROR: Windmill did not become ready in time"
@@ -66,7 +79,7 @@ wait_for_windmill() {
 # Function to get auth token
 get_auth_token() {
     echo "Getting authentication token..."
-    TOKEN=$(curl -s -X POST "$WINDMILL_URL/api/auth/login" \
+    TOKEN=$(curl -s $CURL_AUTH_ARGS -X POST "$WINDMILL_URL/api/auth/login" \
         -H "Content-Type: application/json" \
         -d "{\"email\": \"$WINDMILL_EMAIL\", \"password\": \"$WINDMILL_PASSWORD\"}")
 
@@ -81,7 +94,7 @@ get_auth_token() {
 
 # Function to check if workspace exists
 workspace_exists() {
-    local response=$(curl -s -o /dev/null -w "%{http_code}" \
+    local response=$(curl -s $CURL_AUTH_ARGS -o /dev/null -w "%{http_code}" \
         -H "Authorization: Bearer $TOKEN" \
         "$WINDMILL_URL/api/w/$WORKSPACE_ID/exists")
     [ "$response" = "200" ]
@@ -91,7 +104,7 @@ workspace_exists() {
 create_workspace() {
     echo "Creating workspace '$WORKSPACE_NAME' ($WORKSPACE_ID)..."
 
-    local response=$(curl -s -X POST "$WINDMILL_URL/api/workspaces/create" \
+    local response=$(curl -s $CURL_AUTH_ARGS -X POST "$WINDMILL_URL/api/workspaces/create" \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
         -d "{\"id\": \"$WORKSPACE_ID\", \"name\": \"$WORKSPACE_NAME\"}")
@@ -114,7 +127,7 @@ create_api_token() {
 
     # Create a token that doesn't expire (or expires far in the future)
     # API returns the token as plain text, not JSON
-    API_TOKEN=$(curl -s -X POST "$WINDMILL_URL/api/users/tokens/create" \
+    API_TOKEN=$(curl -s $CURL_AUTH_ARGS -X POST "$WINDMILL_URL/api/users/tokens/create" \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
         -d '{"label": "webhook-ingress", "expiration": null}')
