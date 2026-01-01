@@ -13,24 +13,24 @@ app.get('/health', (req, res) => {
 const PRICING_TIERS = {
   basic: {
     name: 'Básico',
-    base_price: 299, // MXN per month
+    base_price: 499, // MXN per month
     included_messages: 1000,
     price_per_extra_message: 0.30,
-    features: ['Respuestas automáticas 24/7', 'Hasta 1,000 mensajes/mes', 'Soporte por email']
+    features: ['Respuestas automáticas 24/7', 'Hasta 1,000 mensajes/mes', 'Soporte por email', "Instrucciones personalizables"]
   },
   professional: {
     name: 'Profesional',
-    base_price: 799,
+    base_price: 1499,
     included_messages: 5000,
     price_per_extra_message: 0.20,
-    features: ['Todo lo del plan Básico', 'Hasta 5,000 mensajes/mes', 'Integraciones con CRM', 'Soporte prioritario']
+    features: ['Todo lo del plan Básico', 'Hasta 5,000 mensajes/mes', 'Soporte prioritario', 'Integration con herramientas MCP personalizables']
   },
   enterprise: {
     name: 'Empresarial',
-    base_price: 1999,
-    included_messages: 20000,
+    base_price: 3999,
+    included_messages: 25000,
     price_per_extra_message: 0.15,
-    features: ['Todo lo del plan Profesional', 'Hasta 20,000 mensajes/mes', 'API personalizada', 'Gerente de cuenta dedicado', 'SLA garantizado']
+    features: ['Todo lo del plan Profesional', 'Hasta 25,000 mensajes/mes', 'Sistema de conocimiento RAG para aprendizaje desde documentos o sitios web', 'Gerente de cuenta dedicado']
   }
 };
 

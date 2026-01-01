@@ -118,24 +118,19 @@ def _get_cost_per_1k_tokens(provider: str, model: str) -> float:
     - Regular updates as pricing changes
     """
     
-    # Pricing as of Dec 2024 (approximate)
+    # Pricing as of Dec 2025
+    # refer to https://openai.com/api/pricing/ and https://ai.google.dev/gemini-api/docs/pricing
     # IMPORTANT: Order from most specific to least specific to avoid substring matching issues
     # e.g., "gpt-4o-mini" must come before "gpt-4o" to avoid incorrect matches
     pricing = {
         "openai": {
-            "gpt-4o-mini": 0.0002,
-            "gpt-4o": 0.005,
-            "gpt-4-turbo": 0.01,
-            "gpt-3.5-turbo": 0.0015,
+            "gpt-5-mini": 0.00025,
         },
         "google": {
-            "gemini-3-flash-preview": 0.00025,
-        },
-        "anthropic": {
-            "claude-3-opus": 0.015,
-            "claude-3-sonnet": 0.003,
-            "claude-3-haiku": 0.00025,
-        },
+            "gemini-3-flash-preview": 0.00005,
+            "gemini-2.5-flash": 0.00003,
+            "gemini-2.5-flash-lite": 0.00001,
+        }
     }
 
     provider_lower = provider.lower()

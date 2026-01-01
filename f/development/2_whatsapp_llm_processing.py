@@ -4,9 +4,29 @@ import json
 from openai import OpenAI
 from google import genai
 from google.genai import types
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from f.development.utils.db_utils import get_db_connection
 from f.development.utils.flow_utils import estimate_tokens
+
+# =============================================================================
+# MODEL FALLBACK CONFIGURATION
+# =============================================================================
+# When a model hits rate limits (429), try the next model in the chain.
+# Format: (provider, model_name)
+MODEL_FALLBACK_CHAIN = [
+    ("google", "gemini-3-flash-preview"),# Primary: Fast, capable
+    ("google", "gemini-2.5-flash"),      # Fallback 1: Slightly older but reliable
+    ("openai", "gpt-5-mini"),           # Fallback 2: OpenAI backup
+    ("google", "gemini-2.5-flash-lite"),      # Fallback 3: lowest cost
+]
+
+
+def is_rate_limit_error(error: Exception) -> bool:
+    """Check if an exception is a rate limit/quota error."""
+    error_str = str(error).lower()
+    return any(keyword in error_str for keyword in [
+        'quota', 'limit', 'rate', 'exhausted', '429', 'resource_exhausted'
+    ])
 
 
 def build_tool_instructions(tools: List[Dict]) -> str:
@@ -69,12 +89,7 @@ def main(
     history = context_payload["history"]
     tools = context_payload["tools"]
     
-    # Determine provider
-    provider = default_provider
-    if "gemini" in chatbot.get("model_name", "").lower():
-        provider = "google"
-    elif "gpt" in chatbot.get("model_name", "").lower():
-        provider = "openai"
+    # Provider determination moved to execution loop logic
 
     # Base system prompt
     base_prompt = chatbot.get("system_prompt", "You are a helpful assistant.")
@@ -167,176 +182,288 @@ def main(
             }
         })
 
-    try:
-        if provider == "openai":
-            if not openai_api_key:
-                return {"error": "Missing OpenAI API Key"}
+    # Determine initial provider
+    initial_model = chatbot.get("model_name", "")
+    initial_provider = default_provider
+    if "gemini" in initial_model.lower():
+        initial_provider = "google"
+    elif "gpt" in initial_model.lower():
+        initial_provider = "openai"
 
-            model_name = chatbot.get("model_name", "gpt-4o")
-            print(f"Using OpenAI with model: {model_name}")
+    # Build retry chain: [Initial Config] + [Fallback Chain]
+    # We filter out duplicates in the fallback chain to avoid retrying the same failure immediately
+    attempts = [(initial_provider, initial_model)]
+    
+    for fallback_provider, fallback_model in MODEL_FALLBACK_CHAIN:
+        # Avoid adding the initial model again if it's already in the chain
+        if fallback_provider == initial_provider and fallback_model == initial_model:
+            continue
+        attempts.append((fallback_provider, fallback_model))
 
-            client = OpenAI(api_key=openai_api_key)
-
-            # Format Messages
-            messages = [{"role": "system", "content": full_system_prompt}]
-
-            # Add History
-            for msg in history:
-                if msg.get("content"):
-                    messages.append({"role": msg["role"], "content": msg["content"]})
-
-            # Add Current User Message
-            messages.append({"role": "user", "content": user_message})
-
-            # Use agent loop if tools are available
-            if tool_definitions:
-                print(f"Agent loop enabled with {len(tool_definitions)} tools")
-                result = execute_agent_loop_openai(
-                    client=client,
-                    model_name=model_name,
-                    messages=messages,
-                    tools=tool_definitions,
-                    chatbot_id=chatbot["id"],
-                    temperature=chatbot.get("temperature", 0.7),
-                    openai_api_key=openai_api_key,
-                    db_resource=db_resource,
-                    max_iterations=5
-                )
-                reply_text = result["reply_text"]
-                tool_executions = result["tool_executions"]
-                usage_info = result["usage_info"]
-                usage_info["rag_used"] = bool(rag_context)
-                usage_info["chunks_retrieved"] = len(retrieved_chunks)
+    # =========================================================================
+    # EXECUTION LOOP WITH RETRY/FALLBACK
+    # =========================================================================
+    
+    last_exception = None
+    
+    for attempt_idx, (provider, model_name) in enumerate(attempts):
+        print(f"Attempt {attempt_idx+1}/{len(attempts)}: Using {provider} - {model_name}")
+        
+        try:
+            result = attempt_llm_generation(
+                provider=provider,
+                model_name=model_name,
+                chatbot=chatbot,
+                user_message=user_message,
+                history=history,
+                full_system_prompt=full_system_prompt,
+                tool_definitions=tool_definitions,
+                rag_context=rag_context,
+                retrieved_chunks=retrieved_chunks,
+                openai_api_key=openai_api_key,
+                google_api_key=google_api_key,
+                db_resource=db_resource
+            )
+            
+            # If we get here, it succeeded
+            return result
+            
+        except Exception as e:
+            print(f"Attempt failed ({provider}/{model_name}): {e}")
+            last_exception = e
+            
+            # Check if we should retry
+            if is_rate_limit_error(e):
+                print(f"Rate limit hit for {model_name}, failing over to next model...")
+                continue
             else:
-                # Simple LLM call without tools
-                print(f"Calling OpenAI without tools (RAG: {bool(rag_context)})")
+                # For non-rate-limit errors, we also desire fallback per user requirements
+                # "implement a fallback mechanism for when a certain model is rate limited OR fails for some other reason"
+                print(f"General error for {model_name}, failing over to next model...")
+                continue
 
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    temperature=chatbot.get("temperature", 0.7),
-                )
+    # If we exhaust all attempts, generate error response based on last exception
+    print("All attempts failed.")
+    error_str = str(last_exception).lower() if last_exception else "unknown error"
+    
+    # Check if the FINAL error was a rate limit
+    is_limit_error = last_exception and is_rate_limit_error(last_exception)
+    
+    # Use appropriate fallback message
+    if is_limit_error:
+        reply_text = chatbot.get("fallback_message_limit", "Lo siento, he alcanzado mi límite de uso. El administrador ha sido notificado.")
+    else:
+        reply_text = chatbot.get("fallback_message_error", "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo más tarde.")
 
-                reply_text = response.choices[0].message.content
-
-                # Extract usage info
-                usage_info = {
-                    "provider": "openai",
-                    "model": model_name,
-                    "tokens_input": response.usage.prompt_tokens,
-                    "tokens_output": response.usage.completion_tokens,
-                    "rag_used": bool(rag_context),
-                    "chunks_retrieved": len(retrieved_chunks),
-                }
-
-        elif provider == "google":
-            if not google_api_key:
-                return {"error": "Missing Google API Key"}
-
-            model_name = chatbot.get("model_name", "gemini-3-flash-preview")
-            print(f"Using Google with model: {model_name}")
-
-            client = genai.Client(api_key=google_api_key)
-
-            # Format Messages for Gemini (new SDK uses different format)
-            chat_history = []
-            for msg in history:
-                role = "user" if msg["role"] == "user" else "model"
-                if msg.get("content"):
-                    chat_history.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
-
-            # Use agent loop if tools are available
-            if tool_definitions:
-                print(f"Gemini agent loop enabled with {len(tool_definitions)} tools")
-                result = execute_agent_loop_gemini(
-                    client=client,
-                    model_name=model_name,
-                    system_prompt=full_system_prompt,
-                    user_message=user_message,
-                    chat_history=chat_history,
-                    tools=tool_definitions,
-                    chatbot_id=chatbot["id"],
-                    temperature=chatbot.get("temperature", 0.7),
-                    google_api_key=google_api_key,
-                    db_resource=db_resource,
-                    fallback_message_error=chatbot.get("fallback_message_error", "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo más tarde."),
-                    fallback_message_limit=chatbot.get("fallback_message_limit", "Lo siento, he alcanzado mi límite de uso. El administrador ha sido notificado."),
-                    max_iterations=5
-                )
-                reply_text = result["reply_text"]
-                tool_executions = result["tool_executions"]
-                usage_info = result["usage_info"]
-                usage_info["rag_used"] = bool(rag_context)
-                usage_info["chunks_retrieved"] = len(retrieved_chunks)
-            else:
-                # Simple LLM call without tools
-                print(f"Calling Google Gemini without tools (RAG: {bool(rag_context)})")
-
-                # Combine system prompt + user message
-                final_input = f"{full_system_prompt}\n\nUser Message: {user_message}"
-
-                # Add current message to history
-                messages = chat_history + [types.Content(role="user", parts=[types.Part(text=final_input)])]
-
-                # Call Gemini with new SDK
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=messages,
-                    config=types.GenerateContentConfig(
-                        temperature=chatbot.get("temperature", 0.7)
-                    )
-                )
-
-                reply_text = response.text
-
-                # Extract usage info (new SDK structure)
-                usage_metadata = getattr(response, 'usage_metadata', None)
-                if usage_metadata:
-                    usage_info = {
-                        "provider": "google",
-                        "model": model_name,
-                        "tokens_input": usage_metadata.prompt_token_count,
-                        "tokens_output": usage_metadata.candidates_token_count,
-                        "rag_used": bool(rag_context),
-                        "chunks_retrieved": len(retrieved_chunks),
-                    }
-                else:
-                    # Fallback if metadata not available
-                    usage_info = {
-                        "provider": "google",
-                        "model": model_name,
-                        "tokens_input": estimate_tokens(final_input),
-                        "tokens_output": estimate_tokens(reply_text),
-                        "rag_used": bool(rag_context),
-                        "chunks_retrieved": len(retrieved_chunks),
-                    }
-
-        else:
-            return {"error": f"Unknown provider: {provider}"}
-
-    except Exception as e:
-        print(f"LLM Error: {e}")
-        error_str = str(e).lower()
-
-        # Determine if this is a quota/limit error
-        is_limit_error = any(keyword in error_str for keyword in ['quota', 'limit', 'rate', 'exhausted', '429'])
-
-        # Use appropriate fallback message
-        if is_limit_error:
-            reply_text = chatbot.get("fallback_message_limit", "Lo siento, he alcanzado mi límite de uso. El administrador ha sido notificado.")
-        else:
-            reply_text = chatbot.get("fallback_message_error", "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo más tarde.")
-
-        usage_info = {
-            "provider": provider,
-            "model": chatbot.get("model_name"),
-            "error": str(e),
-            "is_limit_error": is_limit_error,
-        }
+    usage_info = {
+        "provider": "failed",
+        "model": "all_failed",
+        "error": str(last_exception),
+        "is_limit_error": is_limit_error,
+    }
 
     return {
         "reply_text": reply_text,
         "updated_variables": updated_variables,
+        "usage_info": usage_info,
+        "tool_executions": tool_executions,
+        "retrieved_sources": [
+            {
+                "source_name": chunk["source_name"],
+                "similarity": chunk["similarity"],
+                "metadata": chunk.get("metadata", {}),
+            }
+            for chunk in retrieved_chunks
+        ] if retrieved_chunks else [],
+    }
+
+
+def attempt_llm_generation(
+    provider: str,
+    model_name: str,
+    chatbot: Dict,
+    user_message: str,
+    history: List[Dict],
+    full_system_prompt: str,
+    tool_definitions: List[Dict],
+    rag_context: str,
+    retrieved_chunks: List,
+    openai_api_key: str,
+    google_api_key: str,
+    db_resource: str
+) -> Dict:
+    """
+    Attempt to generate a response using a specific provider and model.
+    Raises exception on failure.
+    """
+    
+    reply_text = ""
+    tool_executions = []
+    usage_info = {}
+
+    if provider == "openai":
+        if not openai_api_key:
+            raise ValueError("Missing OpenAI API Key")
+
+        # Fallback to defaults if empty model name passed (should not happen in loop but good safety)
+        if not model_name: 
+            model_name = "gpt-4o"
+            
+        print(f"Using OpenAI with model: {model_name}")
+
+        client = OpenAI(api_key=openai_api_key)
+
+        # Format Messages
+        messages = [{"role": "system", "content": full_system_prompt}]
+
+        # Add History
+        for msg in history:
+            if msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+        # Add Current User Message
+        messages.append({"role": "user", "content": user_message})
+
+        # Use agent loop if tools are available
+        if tool_definitions:
+            print(f"Agent loop enabled with {len(tool_definitions)} tools")
+            result = execute_agent_loop_openai(
+                client=client,
+                model_name=model_name,
+                messages=messages,
+                tools=tool_definitions,
+                chatbot_id=chatbot["id"],
+                temperature=chatbot.get("temperature", 0.7),
+                openai_api_key=openai_api_key,
+                db_resource=db_resource,
+                max_iterations=5
+            )
+            reply_text = result["reply_text"]
+            tool_executions = result["tool_executions"]
+            usage_info = result["usage_info"]
+            usage_info["rag_used"] = bool(rag_context)
+            usage_info["chunks_retrieved"] = len(retrieved_chunks)
+            
+            # Check if agent loop reported an error inside the result dict
+            if result.get("usage_info", {}).get("error"):
+                raise Exception(f"Agent loop error: {result['usage_info']['error']}")
+                
+        else:
+            # Simple LLM call without tools
+            print(f"Calling OpenAI without tools (RAG: {bool(rag_context)})")
+
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=chatbot.get("temperature", 0.7),
+            )
+
+            reply_text = response.choices[0].message.content
+
+            # Extract usage info
+            usage_info = {
+                "provider": "openai",
+                "model": model_name,
+                "tokens_input": response.usage.prompt_tokens,
+                "tokens_output": response.usage.completion_tokens,
+                "rag_used": bool(rag_context),
+                "chunks_retrieved": len(retrieved_chunks),
+            }
+
+    elif provider == "google":
+        if not google_api_key:
+            raise ValueError("Missing Google API Key")
+
+        if not model_name:
+            model_name = "gemini-3-flash-preview"
+            
+        print(f"Using Google with model: {model_name}")
+
+        client = genai.Client(api_key=google_api_key)
+
+        # Format Messages for Gemini (new SDK uses different format)
+        chat_history = []
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            if msg.get("content"):
+                chat_history.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
+
+        # Use agent loop if tools are available
+        if tool_definitions:
+            print(f"Gemini agent loop enabled with {len(tool_definitions)} tools")
+            result = execute_agent_loop_gemini(
+                client=client,
+                model_name=model_name,
+                system_prompt=full_system_prompt,
+                user_message=user_message,
+                chat_history=chat_history,
+                tools=tool_definitions,
+                chatbot_id=chatbot["id"],
+                temperature=chatbot.get("temperature", 0.7),
+                google_api_key=google_api_key,
+                db_resource=db_resource,
+                fallback_message_error=chatbot.get("fallback_message_error", "Error"), # Not used inside loop logic exception handling
+                fallback_message_limit=chatbot.get("fallback_message_limit", "Limit"), # Not used inside loop logic exception handling
+                max_iterations=5
+            )
+            reply_text = result["reply_text"]
+            tool_executions = result["tool_executions"]
+            usage_info = result["usage_info"]
+            usage_info["rag_used"] = bool(rag_context)
+            usage_info["chunks_retrieved"] = len(retrieved_chunks)
+            
+            # Check for error in result
+            if result.get("usage_info", {}).get("error"):
+                 raise Exception(f"Agent loop error: {result['usage_info']['error']}")
+
+        else:
+            # Simple LLM call without tools
+            print(f"Calling Google Gemini without tools (RAG: {bool(rag_context)})")
+
+            # Combine system prompt + user message
+            final_input = f"{full_system_prompt}\n\nUser Message: {user_message}"
+            
+            messages = chat_history + [types.Content(role="user", parts=[types.Part(text=final_input)])]
+
+            # Call Gemini with new SDK
+            response = client.models.generate_content(
+                model=model_name,
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    temperature=chatbot.get("temperature", 0.7)
+                )
+            )
+
+            reply_text = response.text
+
+            # Extract usage info (new SDK structure)
+            usage_metadata = getattr(response, 'usage_metadata', None)
+            if usage_metadata:
+                usage_info = {
+                    "provider": "google",
+                    "model": model_name,
+                    "tokens_input": usage_metadata.prompt_token_count,
+                    "tokens_output": usage_metadata.candidates_token_count,
+                    "rag_used": bool(rag_context),
+                    "chunks_retrieved": len(retrieved_chunks),
+                }
+            else:
+                # Fallback if metadata not available
+                usage_info = {
+                    "provider": "google",
+                    "model": model_name,
+                    "tokens_input": estimate_tokens(final_input),
+                    "tokens_output": estimate_tokens(reply_text),
+                    "rag_used": bool(rag_context),
+                    "chunks_retrieved": len(retrieved_chunks),
+                }
+
+    else:
+         raise ValueError(f"Unknown provider: {provider}")
+
+    return {
+        "reply_text": reply_text,
+        "updated_variables": {}, # Currently not using variables update in main loop but reserving slot
         "usage_info": usage_info,
         "tool_executions": tool_executions,
         "retrieved_sources": [
