@@ -158,9 +158,13 @@ sync_scripts() {
 
 # Function to get the flow webhook endpoint
 get_flow_endpoint() {
-    local flow_path="f/$WORKSPACE_ID/whatsapp_webhook_processor__flow"
+    # Windmill webhook endpoint format:
+    #   /api/w/{workspace}/jobs/run/f/{flow_path}
+    # Where flow_path is the full path like "f/development/whatsapp_webhook_processor"
+    # This results in /api/w/.../jobs/run/f/f/development/... (the f/f is correct!)
+    local flow_path="f/development/whatsapp_webhook_processor"
     # Use Docker internal hostname for container-to-container communication
-    FLOW_ENDPOINT="http://windmill_server:8000/api/w/$WORKSPACE_ID/jobs/run/f/development/whatsapp_webhook_processor__flow"
+    FLOW_ENDPOINT="http://windmill_server:8000/api/w/$WORKSPACE_ID/jobs/run/f/$flow_path"
     echo "Flow endpoint: $FLOW_ENDPOINT"
 }
 

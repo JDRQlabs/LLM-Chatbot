@@ -224,7 +224,8 @@ healthcheck: validate
 	WINDMILL_AUTH_PASS="$(WINDMILL_AUTH_PASS)" \
 	./scripts/healthcheck.sh $$IP
 
-# Initialize database schema and seed data
+# Initialize database schema, migrations, and seed data
+# Matches local db/manage_db.sh behavior: create -> migrations -> seed
 db-init: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
 	if [ -z "$$IP" ]; then \
@@ -236,12 +237,18 @@ db-init: validate
 		cd ~/src && \
 		echo "Creating schema..." && \
 		docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < db/create.sql && \
+		echo "Applying migrations..." && \
+		for f in db/migrations/*.sql; do \
+			echo "  Applying $$(basename $$f)..."; \
+			docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < "$$f"; \
+		done && \
 		echo "Seeding data..." && \
 		source .env && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
 		echo "Database initialized successfully!" \
 	'
 
-# Reset database (drop and recreate)
+# Reset database (drop, create, migrations, seed)
+# Matches local db/manage_db.sh reset behavior
 db-reset: validate
 	@IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
 	if [ -z "$$IP" ]; then \
@@ -256,6 +263,11 @@ db-reset: validate
 		docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < db/drop.sql && \
 		echo "Creating schema..." && \
 		docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < db/create.sql && \
+		echo "Applying migrations..." && \
+		for f in db/migrations/*.sql; do \
+			echo "  Applying $$(basename $$f)..."; \
+			docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} < "$$f"; \
+		done && \
 		echo "Seeding data..." && \
 		source .env && envsubst < db/seed.sql | docker exec -i business_logic_db psql -U $${BUSINESS_LOGIC_DB_USER:-business_logic_user} -d $${BUSINESS_LOGIC_DB_NAME:-business_logic_app} && \
 		echo "Database reset complete!" \
@@ -271,7 +283,7 @@ ps: validate
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
 		"docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 
-# Restart a specific service
+# Restart a specific service (does NOT reload .env - use recreate-service for that)
 restart-service: validate
 	@if [ -z "$(SERVICE)" ]; then \
 		echo "Usage: make restart-service SERVICE=<service_name>"; \
@@ -286,6 +298,22 @@ restart-service: validate
 	echo "Restarting $(SERVICE) on $$IP..."; \
 	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
 		"cd ~/src && docker compose -f docker-compose.phase0.yml restart $(SERVICE)"
+
+# Recreate a specific service (reloads .env and rebuilds if needed)
+recreate-service: validate
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Usage: make recreate-service SERVICE=<service_name>"; \
+		echo "This recreates the container with fresh environment from .env"; \
+		exit 1; \
+	fi; \
+	IP=$$(hcloud server list -o noheader -o columns=name,ipv4 | awk '$$1=="$(SERVER_NAME)" {print $$2}'); \
+	if [ -z "$$IP" ]; then \
+		echo "Server $(SERVER_NAME) not found"; \
+		exit 1; \
+	fi; \
+	echo "Recreating $(SERVICE) on $$IP (will reload .env)..."; \
+	ssh -i $(SSH_IDENTITY) -o StrictHostKeyChecking=no ubuntu@$$IP \
+		"cd ~/src && docker compose -f docker-compose.phase0.yml up -d --force-recreate $(SERVICE)"
 
 # Full deployment workflow
 full-deploy: deploy volume-setup start-prod healthcheck
